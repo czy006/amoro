@@ -128,8 +128,9 @@ public class AmoroServiceContainer {
                   }));
       while (true) {
         try {
+          service.startServiceWithoutHighAvailability();
           service.waitLeaderShip();
-          service.startService();
+          service.startServiceWithHighAvailability();
           service.waitFollowerShip();
         } catch (Exception e) {
           LOG.error("AMS start error", e);
@@ -149,6 +150,45 @@ public class AmoroServiceContainer {
 
   public void waitFollowerShip() throws Exception {
     haContainer.waitFollowerShip();
+  }
+
+  public void startServiceWithoutHighAvailability() throws Exception {
+    LOG.info("Setting up AMS Base Services...");
+    EventsManager.getInstance();
+    MetricManager.getInstance();
+
+    catalogManager = new DefaultCatalogManager(serviceConfig);
+    tableManager = new DefaultTableManager(serviceConfig, catalogManager);
+    tableService = new DefaultTableService(serviceConfig, catalogManager);
+    optimizerManager = new DefaultOptimizerManager(serviceConfig);
+    optimizingService =
+        new DefaultOptimizingService(
+            serviceConfig, catalogManager, tableManager, optimizerManager, tableService);
+    terminalManager = new TerminalManager(serviceConfig, catalogManager);
+    initHttpService();
+    startHttpService();
+    registerAmsServiceMetric();
+  }
+
+  public void startServiceWithHighAvailability() throws Exception {
+    LOG.info("Setting up AMS table executors...");
+    AsyncTableExecutors.getInstance().setup(tableService, serviceConfig);
+    addHandlerChain(optimizingService.getTableRuntimeHandler());
+    addHandlerChain(AsyncTableExecutors.getInstance().getDataExpiringExecutor());
+    addHandlerChain(AsyncTableExecutors.getInstance().getSnapshotsExpiringExecutor());
+    addHandlerChain(AsyncTableExecutors.getInstance().getOrphanFilesCleaningExecutor());
+    addHandlerChain(AsyncTableExecutors.getInstance().getDanglingDeleteFilesCleaningExecutor());
+    addHandlerChain(AsyncTableExecutors.getInstance().getOptimizingCommitExecutor());
+    addHandlerChain(AsyncTableExecutors.getInstance().getOptimizingExpiringExecutor());
+    addHandlerChain(AsyncTableExecutors.getInstance().getBlockerExpiringExecutor());
+    addHandlerChain(AsyncTableExecutors.getInstance().getHiveCommitSyncExecutor());
+    addHandlerChain(AsyncTableExecutors.getInstance().getTableRefreshingExecutor());
+    addHandlerChain(AsyncTableExecutors.getInstance().getTagsAutoCreatingExecutor());
+    tableService.initialize();
+    LOG.info("AMS table service have been initialized");
+    tableManager.setTableService(tableService);
+    initThriftService();
+    startThriftService();
   }
 
   public void startService() throws Exception {

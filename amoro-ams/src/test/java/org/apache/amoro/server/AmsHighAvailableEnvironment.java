@@ -41,6 +41,7 @@ import org.apache.amoro.shade.thrift.org.apache.thrift.server.TServer;
 import org.apache.amoro.shade.thrift.org.apache.thrift.transport.TTransportException;
 import org.apache.amoro.table.TableIdentifier;
 import org.apache.commons.io.FileUtils;
+import org.apache.curator.test.TestingServer;
 import org.apache.iceberg.common.DynFields;
 import org.junit.rules.TemporaryFolder;
 import org.kohsuke.args4j.CmdLineException;
@@ -60,10 +61,10 @@ import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class AmsEnvironment {
+public class AmsHighAvailableEnvironment {
 
-  private static final Logger LOG = LoggerFactory.getLogger(AmsEnvironment.class);
-  private static AmsEnvironment integrationInstances = null;
+  private static final Logger LOG = LoggerFactory.getLogger(AmsHighAvailableEnvironment.class);
+  private static AmsHighAvailableEnvironment integrationInstances = null;
   private final String rootPath;
   private static final String DEFAULT_ROOT_PATH = "/tmp/amoro_integration";
   private static final String OPTIMIZE_GROUP = "default";
@@ -87,13 +88,14 @@ public class AmsEnvironment {
   private boolean optimizingStarted = false;
   private boolean singleton = false;
 
-  public static AmsEnvironment getIntegrationInstances() {
-    synchronized (AmsEnvironment.class) {
+  public static AmsHighAvailableEnvironment getIntegrationInstances() {
+    synchronized (AmsHighAvailableEnvironment.class) {
       if (integrationInstances == null) {
         TemporaryFolder baseDir = new TemporaryFolder();
         try {
           baseDir.create();
-          integrationInstances = new AmsEnvironment(baseDir.newFolder().getAbsolutePath());
+          integrationInstances =
+              new AmsHighAvailableEnvironment(baseDir.newFolder().getAbsolutePath());
         } catch (Exception e) {
           throw new RuntimeException(e);
         }
@@ -104,21 +106,24 @@ public class AmsEnvironment {
   }
 
   public static void main(String[] args) throws Exception {
-    AmsEnvironment amsEnvironment = new AmsEnvironment();
+    AmsHighAvailableEnvironment amsEnvironment = new AmsHighAvailableEnvironment();
     amsEnvironment.start();
     amsEnvironment.startOptimizer();
   }
 
-  public AmsEnvironment() throws Exception {
+  public AmsHighAvailableEnvironment() throws Exception {
     this(DEFAULT_ROOT_PATH);
   }
 
-  public AmsEnvironment(String rootPath) throws Exception {
+  public AmsHighAvailableEnvironment(String rootPath) throws Exception {
+    TestingServer server = new TestingServer();
     this.rootPath = rootPath;
     LOG.info("ams environment root path: {}", rootPath);
     String path =
         Objects.requireNonNull(this.getClass().getClassLoader().getResource("")).getPath();
-    FileUtils.writeStringToFile(new File(rootPath + "/conf/config.yaml"), getAmsConfig());
+    FileUtils.writeStringToFile(
+        new File(rootPath + "/conf/config.yaml"),
+        getAmsHighAvailableConfig(server.getConnectString()));
     System.setProperty(Environments.AMORO_HOME, rootPath);
     System.setProperty("derby.init.sql.dir", path + "../classes/sql/derby/");
     amsExit = new AtomicBoolean(false);
@@ -332,6 +337,7 @@ public class AmsEnvironment {
             () -> {
               int retry = 10;
               try {
+                serviceContainer.startServiceWithoutHighAvailability();
                 while (true) {
                   try {
                     LOG.info("start ams");
@@ -349,8 +355,9 @@ public class AmsEnvironment {
                     serviceConfig.set(
                         AmoroManagementConf.REFRESH_EXTERNAL_CATALOGS_INTERVAL,
                         Duration.ofMillis(1000L));
-                    serviceContainer.startServiceWithoutHighAvailability();
+                    serviceContainer.waitLeaderShip();
                     serviceContainer.startServiceWithHighAvailability();
+                    serviceContainer.waitFollowerShip();
                     break;
                   } catch (TTransportException e) {
                     if (e.getCause() instanceof BindException) {
@@ -415,7 +422,7 @@ public class AmsEnvironment {
     this.optimizingServiceBindPort = random.nextInt(4000) + 14000;
   }
 
-  private String getAmsConfig() {
+  private String getAmsHighAvailableConfig(String zkAddress) {
     return "ams:\n"
         + "  admin-username: \"admin\"\n"
         + "  admin-passowrd: \"admin\"\n"
@@ -452,6 +459,14 @@ public class AmsEnvironment {
         + "    url: \"jdbc:derby:"
         + rootPath.replace("\\", "\\\\")
         + "/derby;create=true\"\n"
+        + "\n"
+        + "  ha:\n"
+        + "    enabled: true\n"
+        + "    cluster-name: default\n"
+        + "    zookeeper-address: "
+        + zkAddress
+        + "\n"
+        + "\n"
         + "\n"
         + "  terminal:\n"
         + "    backend: local\n"

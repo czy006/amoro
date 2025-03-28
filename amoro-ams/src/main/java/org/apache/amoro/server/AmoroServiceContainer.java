@@ -127,9 +127,10 @@ public class AmoroServiceContainer {
                     LOG.info("AMS service has been shut down");
                   }));
       while (true) {
+        service.startServiceWithoutHighAvailability();
         try {
           service.waitLeaderShip();
-          service.startService();
+          service.startServiceWithHighAvailability();
           service.waitFollowerShip();
         } catch (Exception e) {
           LOG.error("AMS start error", e);
@@ -151,19 +152,24 @@ public class AmoroServiceContainer {
     haContainer.waitFollowerShip();
   }
 
-  public void startService() throws Exception {
+  public void startServiceWithoutHighAvailability() throws Exception {
+    LOG.info("Setting up AMS Base Services...");
     EventsManager.getInstance();
     MetricManager.getInstance();
 
     catalogManager = new DefaultCatalogManager(serviceConfig);
     tableManager = new DefaultTableManager(serviceConfig, catalogManager);
-    optimizerManager = new DefaultOptimizerManager(serviceConfig, catalogManager);
-
     tableService = new DefaultTableService(serviceConfig, catalogManager);
-
+    optimizerManager = new DefaultOptimizerManager(serviceConfig, catalogManager);
     optimizingService =
         new DefaultOptimizingService(serviceConfig, catalogManager, optimizerManager, tableService);
+    terminalManager = new TerminalManager(serviceConfig, catalogManager);
+    initHttpService();
+    startHttpService();
+    registerAmsServiceMetric();
+  }
 
+  public void startServiceWithHighAvailability() throws Exception {
     LOG.info("Setting up AMS table executors...");
     AsyncTableExecutors.getInstance().setup(tableService, serviceConfig);
     addHandlerChain(optimizingService.getTableRuntimeHandler());
@@ -180,14 +186,8 @@ public class AmoroServiceContainer {
     tableService.initialize();
     LOG.info("AMS table service have been initialized");
     tableManager.setTableService(tableService);
-    terminalManager = new TerminalManager(serviceConfig, catalogManager);
-
     initThriftService();
     startThriftService();
-
-    initHttpService();
-    startHttpService();
-    registerAmsServiceMetric();
   }
 
   private void addHandlerChain(RuntimeHandlerChain chain) {

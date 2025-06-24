@@ -16,18 +16,34 @@
  * limitations under the License.
  */
 
-package org.apache.amoro.maintainer.iceberg;
+package org.apache.amoro.optimizing;
 
-import org.apache.amoro.optimizing.maintainer.AbstractIcebergMaintainer;
-import org.apache.iceberg.Table;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.amoro.maintainer.output.ExpireDataOutput;
 
-public class StandaloneIcebergMaintainer extends AbstractIcebergMaintainer {
+public class IcebergExpireDataOutput extends ExpireDataOutput {
 
-  private static final Logger LOG = LoggerFactory.getLogger(StandaloneIcebergMaintainer.class);
+  private final long dataFilesCount;
+  private final long deleteFilesCount;
 
-  public StandaloneIcebergMaintainer(Table table) {
-    super(table);
+  public IcebergExpireDataOutput(
+      String catalog,
+      String database,
+      String table,
+      String type,
+      Long lastTime,
+      long expireTimestamp,
+      long dataFilesCount,
+      long deleteFilesCount) {
+    super(catalog, database, table, type, lastTime, expireTimestamp);
+    this.dataFilesCount = dataFilesCount;
+    this.deleteFilesCount = deleteFilesCount;
+  }
+
+  public long getDataFilesCount() {
+    return dataFilesCount;
+  }
+
+  public long getDeleteFilesCount() {
+    return deleteFilesCount;
   }
 }

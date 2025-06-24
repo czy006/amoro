@@ -23,11 +23,13 @@ import org.apache.amoro.maintainer.output.CleanOrphanOutPut;
 import org.apache.amoro.optimizing.IcebergCleanOrphanInput;
 import org.apache.amoro.optimizing.IcebergDanglingDeleteFilesInput;
 import org.apache.amoro.optimizing.IcebergDeleteFilesOutput;
+import org.apache.amoro.optimizing.IcebergExpireDataInput;
+import org.apache.amoro.optimizing.IcebergExpireDataOutput;
 import org.apache.amoro.optimizing.IcebergExpireSnapshotInput;
 import org.apache.amoro.optimizing.IcebergExpireSnapshotsOutput;
 
 /**
- * API for maintaining table V2 V2 return result input and output
+ * API for maintaining table V2, V2 return result input and output
  *
  * <p>Includes: clean content files, clean metadata, clean dangling delete files, expire snapshots,
  * auto create tags.
@@ -55,7 +57,7 @@ public interface IcebergTableMaintainerV2 extends TableMaintainer {
    * Expire historical data based on the expiration field, and data that exceeds the retention
    * period will be purged
    */
-  void expireData();
+  IcebergExpireDataOutput expireData(IcebergExpireDataInput input);
 
   /** Auto create tags for table. */
   void autoCreateTags();

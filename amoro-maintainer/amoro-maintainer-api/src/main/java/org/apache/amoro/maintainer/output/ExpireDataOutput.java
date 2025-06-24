@@ -16,18 +16,22 @@
  * limitations under the License.
  */
 
-package org.apache.amoro.maintainer.iceberg;
+package org.apache.amoro.maintainer.output;
 
-import org.apache.amoro.optimizing.maintainer.AbstractIcebergMaintainer;
-import org.apache.iceberg.Table;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.amoro.maintainer.api.BaseMaintainerOutput;
 
-public class StandaloneIcebergMaintainer extends AbstractIcebergMaintainer {
+public class ExpireDataOutput extends BaseMaintainerOutput {
 
-  private static final Logger LOG = LoggerFactory.getLogger(StandaloneIcebergMaintainer.class);
+  private final long expireTimestamp;
 
-  public StandaloneIcebergMaintainer(Table table) {
-    super(table);
+  public ExpireDataOutput(
+      String catalog,
+      String database,
+      String table,
+      String type,
+      Long lastTime,
+      long expireTimestamp) {
+    super(catalog, database, table, type, lastTime);
+    this.expireTimestamp = expireTimestamp;
   }
 }

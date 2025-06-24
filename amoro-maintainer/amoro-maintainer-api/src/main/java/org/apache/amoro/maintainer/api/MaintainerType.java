@@ -21,5 +21,6 @@ package org.apache.amoro.maintainer.api;
 public enum MaintainerType {
   EXPIRE_SNAPSHOTS,
   DANGLING_DELETE_FILES,
-  CLEAN_ORPHAN_FILES
+  CLEAN_ORPHAN_FILES,
+  EXPIRE_DATA
 }

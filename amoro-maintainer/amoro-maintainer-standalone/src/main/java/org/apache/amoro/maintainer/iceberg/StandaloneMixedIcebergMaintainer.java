@@ -22,6 +22,8 @@ import org.apache.amoro.maintainer.output.CleanOrphanOutPut;
 import org.apache.amoro.optimizing.IcebergCleanOrphanInput;
 import org.apache.amoro.optimizing.IcebergDanglingDeleteFilesInput;
 import org.apache.amoro.optimizing.IcebergDeleteFilesOutput;
+import org.apache.amoro.optimizing.IcebergExpireDataInput;
+import org.apache.amoro.optimizing.IcebergExpireDataOutput;
 import org.apache.amoro.optimizing.IcebergExpireSnapshotInput;
 import org.apache.amoro.optimizing.IcebergExpireSnapshotsOutput;
 import org.apache.amoro.optimizing.maintainer.IcebergTableMaintainerV2;
@@ -75,7 +77,9 @@ public class StandaloneMixedIcebergMaintainer implements IcebergTableMaintainerV
   }
 
   @Override
-  public void expireData() {}
+  public IcebergExpireDataOutput expireData(IcebergExpireDataInput input) {
+    throw new UnsupportedOperationException();
+  }
 
   @Override
   public void autoCreateTags() {}

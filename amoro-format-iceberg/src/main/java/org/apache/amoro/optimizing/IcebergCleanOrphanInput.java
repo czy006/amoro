@@ -18,21 +18,31 @@
 
 package org.apache.amoro.optimizing;
 
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.maintainer.input.CleanOrphanInput;
 import org.apache.iceberg.Table;
 
+import java.util.Map;
+
 public class IcebergCleanOrphanInput extends CleanOrphanInput {
 
-  private final Table table;
+  private final Table icebergTable;
 
   public IcebergCleanOrphanInput(
-      String database, Table table, Long orphanExistingMinutes, CatalogMeta catalogMeta) {
-    super(database, orphanExistingMinutes, catalogMeta);
-    this.table = table;
+      String catalog,
+      String database,
+      String table,
+      TableFormat tableFormat,
+      Map<String, String> options,
+      CatalogMeta catalogMeta,
+      Table icebergTable,
+      Long orphanExistingMinutes) {
+    super(catalog, database, table, tableFormat, options, catalogMeta, orphanExistingMinutes);
+    this.icebergTable = icebergTable;
   }
 
-  public Table getTable() {
-    return table;
+  public Table getIcebergTable() {
+    return icebergTable;
   }
 }

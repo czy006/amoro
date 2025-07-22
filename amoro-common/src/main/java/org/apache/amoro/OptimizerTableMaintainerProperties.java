@@ -21,7 +21,9 @@ package org.apache.amoro;
 public class OptimizerTableMaintainerProperties {
 
   // Resource properties
-  public static final String AMS_OPTIMIZER_URI = "ams-optimizing-uri";
+  public static final String AMS_SERVER_URI = "ams-server-uri";
+  public static final String AMS_SERVER_OPTIMIZER_PORT = "ams-optimizer-port";
+  public static final String AMS_SERVER_MAINTAINER_PORT = "ams-maintainer-port";
 
   // Resource container properties
   public static final String EXPORT_PROPERTY_PREFIX = "export.";
@@ -32,4 +34,5 @@ public class OptimizerTableMaintainerProperties {
   public static final String OPTIMIZER_CATALOG = "catalog";
   public static final String OPTIMIZER_DATABASE = "database";
   public static final String OPTIMIZER_TABLE = "table";
+  public static final String TABLE_ID = "table";
 }

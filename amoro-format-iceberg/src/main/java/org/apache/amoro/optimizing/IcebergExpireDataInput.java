@@ -18,32 +18,39 @@
 
 package org.apache.amoro.optimizing;
 
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.config.DataExpirationConfig;
 import org.apache.amoro.maintainer.input.ExpireDataInput;
 import org.apache.iceberg.Table;
 
+import java.util.Map;
+
 public class IcebergExpireDataInput extends ExpireDataInput {
 
   private final DataExpirationConfig expirationConfig;
 
-  private final Table table;
+  private final Table icebergTable;
 
   public IcebergExpireDataInput(
+      String catalog,
       String database,
+      String table,
+      TableFormat tableFormat,
+      Map<String, String> options,
       CatalogMeta catalogMeta,
       DataExpirationConfig expirationConfig,
-      Table table) {
-    super(database, catalogMeta);
+      Table icebergTable) {
+    super(catalog, database, table, tableFormat, options, catalogMeta);
     this.expirationConfig = expirationConfig;
-    this.table = table;
+    this.icebergTable = icebergTable;
   }
 
   public DataExpirationConfig getExpirationConfig() {
     return expirationConfig;
   }
 
-  public Table getTable() {
-    return table;
+  public Table getIcebergTable() {
+    return icebergTable;
   }
 }

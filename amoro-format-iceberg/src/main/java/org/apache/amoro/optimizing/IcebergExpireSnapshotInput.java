@@ -18,28 +18,50 @@
 
 package org.apache.amoro.optimizing;
 
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.maintainer.input.ExpireSnapshotInput;
 import org.apache.iceberg.Table;
 
+import java.util.Map;
 import java.util.Set;
 
 public class IcebergExpireSnapshotInput extends ExpireSnapshotInput {
 
-  private final Table table;
+  private final Table icebergTable;
+  private final Integer maxConcurrentDeletes;
 
   public IcebergExpireSnapshotInput(
+      String catalog,
       String database,
-      Table table,
+      String table,
+      TableFormat tableFormat,
+      Map<String, String> options,
+      CatalogMeta catalogMeta,
+      Table icebergTable,
       Long mustOlderThan,
       Integer minCount,
       Set<String> expireSnapshotNeedToExcludeFiles,
-      CatalogMeta catalogMeta) {
-    super(database, mustOlderThan, minCount, expireSnapshotNeedToExcludeFiles, catalogMeta);
-    this.table = table;
+      Integer maxConcurrentDeletes) {
+    super(
+        catalog,
+        database,
+        table,
+        tableFormat,
+        options,
+        catalogMeta,
+        mustOlderThan,
+        minCount,
+        expireSnapshotNeedToExcludeFiles);
+    this.icebergTable = icebergTable;
+    this.maxConcurrentDeletes = maxConcurrentDeletes;
   }
 
-  public Table getTable() {
-    return table;
+  public Table getIcebergTable() {
+    return icebergTable;
+  }
+
+  public Integer getMaxConcurrentDeletes() {
+    return maxConcurrentDeletes;
   }
 }

@@ -26,16 +26,126 @@ public class BaseMaintainerOutput implements TableMaintainerOptimizing.Maintaine
   private String catalog;
   private String database;
   private String table;
-  private String type;
+  private MaintainerType type;
+  private Long startTime;
   private Long lastTime;
+  private Long endTime;
+  private Long executionTimeMs;
+  private Boolean success;
+  private String errorMessage;
+  private Map<String, String> summary;
 
   public BaseMaintainerOutput(
-      String catalog, String database, String table, String type, Long lastTime) {
+      String catalog,
+      String database,
+      String table,
+      MaintainerType type,
+      Long startTime,
+      Long lastTime,
+      Long endTime,
+      Long executionTimeMs,
+      Boolean success,
+      String errorMessage,
+      Map<String, String> summary) {
     this.catalog = catalog;
     this.database = database;
     this.table = table;
     this.type = type;
+    this.startTime = startTime;
     this.lastTime = lastTime;
+    this.endTime = endTime;
+    this.executionTimeMs = executionTimeMs;
+    this.success = success;
+    this.errorMessage = errorMessage;
+    this.summary = summary;
+  }
+
+  public String getCatalog() {
+    return catalog;
+  }
+
+  public void setCatalog(String catalog) {
+    this.catalog = catalog;
+  }
+
+  public String getDatabase() {
+    return database;
+  }
+
+  public void setDatabase(String database) {
+    this.database = database;
+  }
+
+  public String getTable() {
+    return table;
+  }
+
+  public void setTable(String table) {
+    this.table = table;
+  }
+
+  public MaintainerType getType() {
+    return type;
+  }
+
+  public void setType(MaintainerType type) {
+    this.type = type;
+  }
+
+  public Long getStartTime() {
+    return startTime;
+  }
+
+  public void setStartTime(Long startTime) {
+    this.startTime = startTime;
+  }
+
+  public Long getLastTime() {
+    return lastTime;
+  }
+
+  public void setLastTime(Long lastTime) {
+    this.lastTime = lastTime;
+  }
+
+  public Long getEndTime() {
+    return endTime;
+  }
+
+  public void setEndTime(Long endTime) {
+    this.endTime = endTime;
+  }
+
+  public Long getExecutionTimeMs() {
+    return executionTimeMs;
+  }
+
+  public void setExecutionTimeMs(Long executionTimeMs) {
+    this.executionTimeMs = executionTimeMs;
+  }
+
+  public Boolean getSuccess() {
+    return success;
+  }
+
+  public void setSuccess(Boolean success) {
+    this.success = success;
+  }
+
+  public String getErrorMessage() {
+    return errorMessage;
+  }
+
+  public void setErrorMessage(String errorMessage) {
+    this.errorMessage = errorMessage;
+  }
+
+  public Map<String, String> getSummary() {
+    return summary;
+  }
+
+  public void setSummary(Map<String, String> summary) {
+    this.summary = summary;
   }
 
   @Override
@@ -44,7 +154,7 @@ public class BaseMaintainerOutput implements TableMaintainerOptimizing.Maintaine
     summary.put("catalog", catalog);
     summary.put("database", database);
     summary.put("table", table);
-    summary.put("type", type);
+    summary.put("type", type.name());
     return summary;
   }
 }

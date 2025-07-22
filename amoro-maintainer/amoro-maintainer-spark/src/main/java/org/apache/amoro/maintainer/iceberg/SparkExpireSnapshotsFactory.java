@@ -19,24 +19,27 @@
 package org.apache.amoro.maintainer.iceberg;
 
 import org.apache.amoro.maintainer.api.MaintainerExecutor;
-import org.apache.amoro.maintainer.iceberg.producer.ExpireSnapshotsSparkExecutor;
+import org.apache.amoro.maintainer.iceberg.producer.SparkExpireSnapshots;
 import org.apache.amoro.optimizing.IcebergExpireSnapshotInput;
 import org.apache.amoro.optimizing.IcebergExpireSnapshotsOutput;
 import org.apache.amoro.optimizing.maintainer.ExpireSnapshotsFactory;
+import org.apache.iceberg.spark.actions.SparkActions;
 import org.apache.spark.sql.SparkSession;
 
 /** SparkExpireSnapshotsFactory */
 public class SparkExpireSnapshotsFactory extends ExpireSnapshotsFactory {
 
   private final SparkSession spark;
+  private final SparkActions actions;
 
-  public SparkExpireSnapshotsFactory(SparkSession spark) {
+  public SparkExpireSnapshotsFactory(SparkActions actions, SparkSession spark) {
     this.spark = spark;
+    this.actions = actions;
   }
 
   @Override
   public MaintainerExecutor<IcebergExpireSnapshotsOutput> createExecutor(
       IcebergExpireSnapshotInput input) {
-    return new ExpireSnapshotsSparkExecutor(spark, input);
+    return new SparkExpireSnapshots(input, actions);
   }
 }

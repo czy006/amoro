@@ -18,21 +18,30 @@
 
 package org.apache.amoro.optimizing;
 
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.maintainer.input.DanglingDeleteFilesInput;
 import org.apache.iceberg.Table;
 
+import java.util.Map;
+
 public class IcebergDanglingDeleteFilesInput extends DanglingDeleteFilesInput {
 
-  private final Table table;
+  private final Table icebergTable;
 
   public IcebergDanglingDeleteFilesInput(
-      String database, CatalogMeta catalogMeta, Table table, boolean danglingFileCleanEnabled) {
-    super(database, catalogMeta, danglingFileCleanEnabled);
-    this.table = table;
+      String catalog,
+      String database,
+      String table,
+      TableFormat tableFormat,
+      Map<String, String> options,
+      CatalogMeta catalogMetaTable,
+      Table icebergTable) {
+    super(catalog, database, table, tableFormat, options, catalogMetaTable);
+    this.icebergTable = icebergTable;
   }
 
-  public Table getTable() {
-    return table;
+  public Table getIcebergTable() {
+    return icebergTable;
   }
 }

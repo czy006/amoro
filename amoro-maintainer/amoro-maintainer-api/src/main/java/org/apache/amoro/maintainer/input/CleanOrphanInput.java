@@ -18,17 +18,27 @@
 
 package org.apache.amoro.maintainer.input;
 
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.maintainer.api.BaseMaintainerInput;
 import org.apache.commons.lang3.builder.ToStringBuilder;
+
+import java.util.Map;
 
 public class CleanOrphanInput extends BaseMaintainerInput {
 
   private final Long orphanExistingMinutes;
   private final CatalogMeta catalogMeta;
 
-  public CleanOrphanInput(String database, Long orphanExistingMinutes, CatalogMeta catalogMeta) {
-    super(database);
+  public CleanOrphanInput(
+      String catalog,
+      String database,
+      String table,
+      TableFormat tableFormat,
+      Map<String, String> options,
+      CatalogMeta catalogMeta,
+      Long orphanExistingMinutes) {
+    super(catalog, database, table, tableFormat, options);
     this.orphanExistingMinutes = orphanExistingMinutes;
     this.catalogMeta = catalogMeta;
   }

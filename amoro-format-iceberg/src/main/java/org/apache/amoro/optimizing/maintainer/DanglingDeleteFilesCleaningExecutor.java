@@ -18,7 +18,6 @@
 
 package org.apache.amoro.optimizing.maintainer;
 
-import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.api.CommitMetaProducer;
 import org.apache.amoro.maintainer.api.MaintainerExecutor;
@@ -57,7 +56,7 @@ public class DanglingDeleteFilesCleaningExecutor
   public DanglingDeleteFilesCleaningExecutor(IcebergDanglingDeleteFilesInput input) {
     this.database = input.getDatabase();
     this.catalogMeta = input.getCatalogMeta();
-    this.table = input.getTable();
+    this.table = input.getIcebergTable();
   }
 
   @Override
@@ -73,15 +72,22 @@ public class DanglingDeleteFilesCleaningExecutor
   private IcebergDeleteFilesOutput clearInternalTableDanglingDeleteFiles() {
     long startTime = System.currentTimeMillis();
     Set<DeleteFile> danglingDeleteFiles = IcebergTableUtil.getDanglingDeleteFiles(table);
+    long endTime = System.currentTimeMillis();
     if (danglingDeleteFiles.isEmpty()) {
+      endTime = System.currentTimeMillis();
       return new IcebergDeleteFilesOutput(
           catalogMeta.getCatalogName(),
           database,
           table.name(),
-          TableFormat.ICEBERG.name(),
-          System.currentTimeMillis(),
-          new DeleteFile[0],
-          new HashMap<>());
+          MaintainerType.DANGLING_DELETE_FILES,
+          startTime,
+          endTime,
+          endTime,
+          endTime - startTime,
+          true,
+          null,
+          new HashMap<>(),
+          new DeleteFile[0]);
     }
     RewriteFiles rewriteFiles = table.newRewrite();
     rewriteFiles.rewriteFiles(
@@ -95,27 +101,39 @@ public class DanglingDeleteFilesCleaningExecutor
           CommitMetaProducer.CLEAN_DANGLING_DELETE.name());
       rewriteFiles.commit();
     } catch (ValidationException e) {
+      endTime = System.currentTimeMillis();
       LOG.warn("Iceberg RewriteFiles commit failed on clear danglingDeleteFiles, but ignore", e);
       return new IcebergDeleteFilesOutput(
           catalogMeta.getCatalogName(),
           database,
           table.name(),
-          TableFormat.ICEBERG.name(),
-          System.currentTimeMillis(),
-          new DeleteFile[0],
-          new HashMap<>());
+          MaintainerType.DANGLING_DELETE_FILES,
+          startTime,
+          endTime,
+          endTime,
+          endTime - startTime,
+          true,
+          e.getMessage(),
+          new HashMap<>(),
+          new DeleteFile[0]);
     }
     long duration = System.currentTimeMillis() - startTime;
     Map<String, String> summary =
         resolverSummary(new ArrayList<>(), new ArrayList<>(danglingDeleteFiles), duration);
+    endTime = System.currentTimeMillis();
     return new IcebergDeleteFilesOutput(
         catalogMeta.getCatalogName(),
         database,
         table.name(),
-        TableFormat.ICEBERG.name(),
-        System.currentTimeMillis(),
-        danglingDeleteFiles.toArray(new DeleteFile[0]),
-        summary);
+        MaintainerType.DANGLING_DELETE_FILES,
+        startTime,
+        endTime,
+        endTime,
+        endTime - startTime,
+        true,
+        null,
+        new HashMap<>(),
+        danglingDeleteFiles.toArray(new DeleteFile[0]));
   }
 
   private Map<String, String> resolverSummary(

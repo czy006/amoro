@@ -18,24 +18,26 @@
 
 package org.apache.amoro.maintainer.input;
 
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.maintainer.api.BaseMaintainerInput;
 import org.apache.amoro.shade.guava32.com.google.common.base.MoreObjects;
 
+import java.util.Map;
+
 public class DanglingDeleteFilesInput extends BaseMaintainerInput {
 
   private final CatalogMeta catalogMeta;
-  private final boolean danglingFileCleanEnabled;
 
   public DanglingDeleteFilesInput(
-      String database, CatalogMeta catalogMeta, boolean danglingFileCleanEnabled) {
-    super(database);
+      String catalog,
+      String database,
+      String table,
+      TableFormat tableFormat,
+      Map<String, String> options,
+      CatalogMeta catalogMeta) {
+    super(catalog, database, table, tableFormat, options);
     this.catalogMeta = catalogMeta;
-    this.danglingFileCleanEnabled = danglingFileCleanEnabled;
-  }
-
-  public boolean isDanglingFileCleanEnabled() {
-    return danglingFileCleanEnabled;
   }
 
   public CatalogMeta getCatalogMeta() {
@@ -44,9 +46,6 @@ public class DanglingDeleteFilesInput extends BaseMaintainerInput {
 
   @Override
   public String toString() {
-    return MoreObjects.toStringHelper(this)
-        .add("danglingFileCleanEnabled", danglingFileCleanEnabled)
-        .addValue(super.toString())
-        .toString();
+    return MoreObjects.toStringHelper(this).addValue(super.toString()).toString();
   }
 }

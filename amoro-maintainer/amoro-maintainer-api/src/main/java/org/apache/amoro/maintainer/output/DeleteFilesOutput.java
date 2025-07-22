@@ -26,8 +26,29 @@ import java.util.Map;
 public class DeleteFilesOutput extends BaseMaintainerOutput {
 
   public DeleteFilesOutput(
-      String catalog, String database, String table, String type, Long lastTime) {
-    super(catalog, database, table, type, lastTime);
+      String catalog,
+      String database,
+      String table,
+      MaintainerType type,
+      Long startTime,
+      Long lastTime,
+      Long endTime,
+      Long executionTimeMs,
+      Boolean success,
+      String errorMessage,
+      Map<String, String> summary) {
+    super(
+        catalog,
+        database,
+        table,
+        type,
+        startTime,
+        lastTime,
+        endTime,
+        executionTimeMs,
+        success,
+        errorMessage,
+        summary);
   }
 
   @Override

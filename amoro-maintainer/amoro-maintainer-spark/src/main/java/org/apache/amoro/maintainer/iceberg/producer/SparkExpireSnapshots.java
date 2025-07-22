@@ -16,38 +16,38 @@
  * limitations under the License.
  */
 
-package org.apache.amoro.optimizing.maintainer;
+package org.apache.amoro.maintainer.iceberg.producer;
 
 import static org.apache.amoro.shade.guava32.com.google.common.primitives.Longs.min;
 
-import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.api.CommitMetaProducer;
-import org.apache.amoro.io.AuthenticatedFileIO;
-import org.apache.amoro.io.AuthenticatedFileIOs;
 import org.apache.amoro.maintainer.api.MaintainerExecutor;
 import org.apache.amoro.maintainer.api.MaintainerType;
 import org.apache.amoro.optimizing.IcebergExpireSnapshotInput;
 import org.apache.amoro.optimizing.IcebergExpireSnapshotsOutput;
+import org.apache.amoro.optimizing.maintainer.IcebergTableUtil;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Sets;
-import org.apache.amoro.table.TableMetaStore;
-import org.apache.amoro.utils.CatalogUtil;
-import org.apache.amoro.utils.TableFileUtil;
-import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.Table;
-import org.apache.iceberg.util.ThreadPools;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.iceberg.actions.ExpireSnapshots;
+import org.apache.iceberg.relocated.com.google.common.util.concurrent.MoreExecutors;
+import org.apache.iceberg.relocated.com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.iceberg.spark.actions.ExpireSnapshotsSparkAction;
+import org.apache.iceberg.spark.actions.SparkActions;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
-public class ExpireSnapshotsExecutor implements MaintainerExecutor<IcebergExpireSnapshotsOutput> {
+public class SparkExpireSnapshots implements MaintainerExecutor<IcebergExpireSnapshotsOutput> {
 
-  private static final Logger LOG = LoggerFactory.getLogger(ExpireSnapshotsExecutor.class);
+  private final SparkActions action;
+  private final Table table;
+  private final Integer retainLastNum;
+  private final Long olderThanMillis;
+  private final Integer maxConcurrentDeletes;
 
   public static final Set<String> AMORO_MAINTAIN_COMMITS =
       Sets.newHashSet(
@@ -58,102 +58,52 @@ public class ExpireSnapshotsExecutor implements MaintainerExecutor<IcebergExpire
   // same as org.apache.iceberg.flink.sink.IcebergFilesCommitter#MAX_COMMITTED_CHECKPOINT_ID
   public static final String FLINK_MAX_COMMITTED_CHECKPOINT_ID =
       "flink.max-committed-checkpoint-id";
-
-  private final Long olderThan;
-  private final Integer minCount;
-  private final Set<String> exclude;
-  private final CatalogMeta catalogMeta;
+  private final String catalogName;
   private final String database;
-  protected Table table;
 
-  public ExpireSnapshotsExecutor(IcebergExpireSnapshotInput input) {
+  public SparkExpireSnapshots(IcebergExpireSnapshotInput input, SparkActions sparkActions) {
+    this.action = sparkActions;
+    this.catalogName = input.getCatalogMeta().getCatalogName();
     this.database = input.getDatabase();
     this.table = input.getIcebergTable();
-    this.olderThan =
+    this.olderThanMillis =
         mustOlderThan(table, input.getSnapshotTTLMinutes(), System.currentTimeMillis());
-    this.minCount = input.getMinCount();
-    this.exclude = input.getExpireSnapshotNeedToExcludeFiles();
-    this.catalogMeta = input.getCatalogMeta();
+    this.retainLastNum = input.getMinCount();
+    this.maxConcurrentDeletes = input.getMaxConcurrentDeletes();
   }
 
   @Override
   public IcebergExpireSnapshotsOutput execute() {
-    LOG.info(
-        "start expire snapshots older than {} and retain last {} snapshots, the exclude is {}",
-        olderThan,
-        minCount,
-        exclude);
-    long startTime = System.currentTimeMillis();
-    final AtomicLong toDeleteFiles = new AtomicLong(0);
-    Set<String> parentDirectories = new HashSet<>();
-    Set<String> expiredFiles = new HashSet<>();
-    table
-        .expireSnapshots()
-        .retainLast(Math.max(minCount, 1))
-        .expireOlderThan(olderThan)
-        .deleteWith(
-            file -> {
-              if (exclude.isEmpty()) {
-                expiredFiles.add(file);
-              } else {
-                String fileUriPath = TableFileUtil.getUriPath(file);
-                if (!exclude.contains(fileUriPath)
-                    && !exclude.contains(new Path(fileUriPath).getParent().toString())) {
-                  expiredFiles.add(file);
-                }
-              }
-
-              parentDirectories.add(new Path(file).getParent().toString());
-              toDeleteFiles.incrementAndGet();
-            })
-        .cleanExpiredFiles(
-            true) /* enable clean only for collecting the expired files, will delete them later */
-        .commit();
-
-    // try to batch delete files
-    int deletedFiles =
-        TableFileUtil.parallelDeleteFiles(fileIO(), expiredFiles, ThreadPools.getWorkerPool());
-
-    parentDirectories.forEach(
-        parent -> {
-          try {
-            TableFileUtil.deleteEmptyDirectory(fileIO(), parent, exclude);
-          } catch (Exception e) {
-            // Ignore exceptions to remove as many directories as possible
-            LOG.warn("Fail to delete empty directory {}", parent, e);
-          }
-        });
-
-    LOG.info(
-        "To delete {} files in {}, success delete {} files",
-        toDeleteFiles.get(),
-        table.name(),
-        deletedFiles);
-    long endTime = System.currentTimeMillis();
+    ExpireSnapshots.Result result =
+        action
+            .expireSnapshots(table)
+            .expireOlderThan(olderThanMillis)
+            .retainLast(retainLastNum)
+            .option(ExpireSnapshotsSparkAction.STREAM_RESULTS, Boolean.toString(true))
+            .executeDeleteWith(
+                MoreExecutors.getExitingExecutorService(
+                    (ThreadPoolExecutor)
+                        Executors.newFixedThreadPool(
+                            maxConcurrentDeletes,
+                            new ThreadFactoryBuilder()
+                                .setDaemon(true)
+                                .setNameFormat("expire-snapshots" + "-%d")
+                                .build())))
+            .execute();
     return new IcebergExpireSnapshotsOutput(
-        catalogMeta.getCatalogName(),
+        catalogName,
         database,
         table.name(),
-        MaintainerType.DANGLING_DELETE_FILES,
-        startTime,
-        endTime,
-        endTime,
-        endTime - startTime,
+        MaintainerType.EXPIRE_SNAPSHOTS,
+        System.currentTimeMillis(),
+        System.currentTimeMillis(),
+        System.currentTimeMillis(),
+        1000L,
         true,
         null,
         new HashMap<>(),
-        (long) deletedFiles,
-        null);
-  }
-
-  @Override
-  public MaintainerType type() {
-    return MaintainerType.EXPIRE_SNAPSHOTS;
-  }
-
-  protected AuthenticatedFileIO fileIO() {
-    TableMetaStore tableMetaStore = CatalogUtil.buildMetaStore(catalogMeta);
-    return AuthenticatedFileIOs.buildAdaptIcebergFileIO(tableMetaStore, table.io());
+        3L,
+        result);
   }
 
   protected static long mustOlderThan(Table table, Long snapshotTTLMinutes, long now) {
@@ -196,5 +146,10 @@ public class ExpireSnapshotsExecutor implements MaintainerExecutor<IcebergExpire
       }
     }
     return latestSnapshot;
+  }
+
+  @Override
+  public MaintainerType type() {
+    return MaintainerType.EXPIRE_SNAPSHOTS;
   }
 }

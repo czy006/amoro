@@ -18,10 +18,12 @@
 
 package org.apache.amoro.maintainer.input;
 
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.maintainer.api.BaseMaintainerInput;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 
+import java.util.Map;
 import java.util.Set;
 
 public class ExpireSnapshotInput extends BaseMaintainerInput {
@@ -32,12 +34,16 @@ public class ExpireSnapshotInput extends BaseMaintainerInput {
   private final CatalogMeta catalogMeta;
 
   public ExpireSnapshotInput(
+      String catalog,
       String database,
+      String table,
+      TableFormat tableFormat,
+      Map<String, String> options,
+      CatalogMeta catalogMeta,
       Long snapshotTTLMinutes,
       Integer minCount,
-      Set<String> expireSnapshotNeedToExcludeFiles,
-      CatalogMeta catalogMeta) {
-    super(database);
+      Set<String> expireSnapshotNeedToExcludeFiles) {
+    super(catalog, database, table, tableFormat, options);
     this.snapshotTTLMinutes = snapshotTTLMinutes;
     this.minCount = minCount;
     this.expireSnapshotNeedToExcludeFiles = expireSnapshotNeedToExcludeFiles;

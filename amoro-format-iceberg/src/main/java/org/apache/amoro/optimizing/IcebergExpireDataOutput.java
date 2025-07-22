@@ -18,7 +18,10 @@
 
 package org.apache.amoro.optimizing;
 
+import org.apache.amoro.maintainer.api.MaintainerType;
 import org.apache.amoro.maintainer.output.ExpireDataOutput;
+
+import java.util.Map;
 
 public class IcebergExpireDataOutput extends ExpireDataOutput {
 
@@ -29,12 +32,28 @@ public class IcebergExpireDataOutput extends ExpireDataOutput {
       String catalog,
       String database,
       String table,
-      String type,
+      MaintainerType type,
+      Long startTime,
       Long lastTime,
-      long expireTimestamp,
+      Long endTime,
+      Long executionTimeMs,
+      Boolean success,
+      String errorMessage,
+      Map<String, String> summary,
       long dataFilesCount,
       long deleteFilesCount) {
-    super(catalog, database, table, type, lastTime, expireTimestamp);
+    super(
+        catalog,
+        database,
+        table,
+        type,
+        startTime,
+        lastTime,
+        endTime,
+        executionTimeMs,
+        success,
+        errorMessage,
+        summary);
     this.dataFilesCount = dataFilesCount;
     this.deleteFilesCount = deleteFilesCount;
   }

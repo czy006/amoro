@@ -18,21 +18,21 @@
 
 package org.apache.amoro.server;
 
+import org.apache.amoro.Action;
+import org.apache.amoro.IcebergActions;
+import org.apache.amoro.ServerTableIdentifier;
 import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.AmoroException;
-import org.apache.amoro.api.CatalogMeta;
-import org.apache.amoro.api.ExecutorTask;
-import org.apache.amoro.api.ExecutorTaskId;
 import org.apache.amoro.api.ExecutorTaskResult;
 import org.apache.amoro.api.MaintainerService;
+import org.apache.amoro.api.TableIdentifier;
 import org.apache.amoro.config.Configurations;
-import org.apache.amoro.maintainer.api.MaintainerResult;
-import org.apache.amoro.maintainer.api.TableMaintainer;
+import org.apache.amoro.process.ProcessStatus;
+import org.apache.amoro.process.TableProcessState;
 import org.apache.amoro.server.catalog.CatalogManager;
 import org.apache.amoro.server.persistence.PersistentBase;
-import org.apache.amoro.server.persistence.mapper.MaintainerMapper;
+import org.apache.amoro.server.persistence.mapper.ProcessStateMapper;
 import org.apache.amoro.shade.thrift.org.apache.thrift.TException;
-import org.apache.amoro.utils.SerializationUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,33 +54,50 @@ public class DefaultTableMaintainerService extends PersistentBase
   public void ping() throws TException {}
 
   @Override
-  public ExecutorTask ackTableMetadata(String catalog, String db, String tableName, String type)
-      throws AmoroException, TException {
-    LOG.info(
-        "Get Table Metadata: catalog:{},db:{},tableName:{},type:{}", catalog, db, tableName, type);
-    CatalogMeta catalogMeta = catalogManager.getCatalogMeta(catalog);
-    return extractProtocolTask(new ExecutorTaskId(System.currentTimeMillis() + 1, 1), catalogMeta);
+  public void ackTask(ExecutorTaskResult taskResult) throws AmoroException, TException {
+    TableIdentifier tableIdentifier = taskResult.getTableIdentifier();
+    ServerTableIdentifier serverTableIdentifier =
+        ServerTableIdentifier.of(
+            taskResult.getTableId(),
+            tableIdentifier.getCatalog(),
+            tableIdentifier.getDatabase(),
+            tableIdentifier.getTableName(),
+            TableFormat.ICEBERG);
+    // 获取当前的PROCESS_ID 以PROCESS ID 作为主键进行更新
+    long processId = taskResult.getProcessId();
+    int status = taskResult.getStatus();
+    Action action = IcebergActions.actions.get(taskResult.getAction());
+    TableProcessState tableProcessState =
+        new TableProcessState(processId, action, serverTableIdentifier);
+    tableProcessState.setStatus(ProcessStatus.valueOf("RUNNING"));
+    doAs(ProcessStateMapper.class, mapper -> mapper.updateProcessRunning(tableProcessState));
   }
 
+  /**
+   * 完成Task的一些情况
+   *
+   * @param taskResult
+   * @throws AmoroException
+   * @throws TException
+   */
   @Override
   public void completeTask(ExecutorTaskResult taskResult) throws AmoroException, TException {
-    LOG.info("Completing task {} with result {}", taskResult.getTaskId(), taskResult);
-    MaintainerResult result = new MaintainerResult();
-    result.setCatalogName(taskResult.getCatalog());
-    result.setDbName(taskResult.getDatabase());
-    result.setTableName(taskResult.getTable());
-    result.setTableFormat(TableFormat.ICEBERG);
-    result.setMaintainerType(taskResult.getTableType());
-    result.setStatus(TableMaintainer.Status.SUCCESS);
-    result.setSummary(taskResult.getSummary());
-    LOG.info("Completing task insert into with result {}", result);
-    doAs(MaintainerMapper.class, mapper -> mapper.insertMaintainerReport(result));
-  }
-
-  public ExecutorTask extractProtocolTask(ExecutorTaskId taskId, CatalogMeta catalogMeta) {
-    ExecutorTask optimizingTask = new ExecutorTask(taskId);
-    optimizingTask.setTaskInput(SerializationUtil.simpleSerialize(catalogMeta));
-    optimizingTask.setServerConfig(serviceConfig.toMap());
-    return optimizingTask;
+    TableIdentifier tableIdentifier = taskResult.getTableIdentifier();
+    ServerTableIdentifier serverTableIdentifier =
+        ServerTableIdentifier.of(
+            taskResult.getTableId(),
+            tableIdentifier.getCatalog(),
+            tableIdentifier.getDatabase(),
+            tableIdentifier.getTableName(),
+            TableFormat.ICEBERG);
+    Action action = IcebergActions.actions.get(taskResult.getAction());
+    TableProcessState tableProcessState =
+        new TableProcessState(taskResult.getProcessId(), action, serverTableIdentifier);
+    if (taskResult.getErrorMessage() != null) {
+      tableProcessState.setCompleted(taskResult.getErrorMessage());
+    } else {
+      tableProcessState.setCompleted();
+    }
+    doAs(ProcessStateMapper.class, mapper -> mapper.updateProcessRunning(tableProcessState));
   }
 }

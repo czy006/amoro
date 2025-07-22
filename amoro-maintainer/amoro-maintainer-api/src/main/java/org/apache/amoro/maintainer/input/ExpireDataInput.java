@@ -18,15 +18,24 @@
 
 package org.apache.amoro.maintainer.input;
 
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.maintainer.api.BaseMaintainerInput;
+
+import java.util.Map;
 
 public class ExpireDataInput extends BaseMaintainerInput {
 
   private final CatalogMeta catalogMeta;
 
-  public ExpireDataInput(String database, CatalogMeta catalogMeta) {
-    super(database);
+  public ExpireDataInput(
+      String catalog,
+      String database,
+      String table,
+      TableFormat tableFormat,
+      Map<String, String> options,
+      CatalogMeta catalogMeta) {
+    super(catalog, database, table, tableFormat, options);
     this.catalogMeta = catalogMeta;
   }
 

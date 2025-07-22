@@ -19,19 +19,35 @@
 package org.apache.amoro.maintainer.output;
 
 import org.apache.amoro.maintainer.api.BaseMaintainerOutput;
+import org.apache.amoro.maintainer.api.MaintainerType;
+
+import java.util.Map;
 
 public class ExpireDataOutput extends BaseMaintainerOutput {
-
-  private final long expireTimestamp;
 
   public ExpireDataOutput(
       String catalog,
       String database,
       String table,
-      String type,
+      MaintainerType type,
+      Long startTime,
       Long lastTime,
-      long expireTimestamp) {
-    super(catalog, database, table, type, lastTime);
-    this.expireTimestamp = expireTimestamp;
+      Long endTime,
+      Long executionTimeMs,
+      Boolean success,
+      String errorMessage,
+      Map<String, String> summary) {
+    super(
+        catalog,
+        database,
+        table,
+        type,
+        startTime,
+        lastTime,
+        endTime,
+        executionTimeMs,
+        success,
+        errorMessage,
+        summary);
   }
 }

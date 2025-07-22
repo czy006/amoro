@@ -18,14 +18,46 @@
 
 package org.apache.amoro.maintainer.api;
 
+/**
+ * Core interface for table maintenance operations in data lakes. Defines the common behavior for
+ * table maintainers across different data lake implementations (Iceberg, Paimon, etc.).
+ *
+ * <p>This interface provides abstraction for snapshot expiration, orphan file cleanup, and other
+ * maintenance operations while allowing each data lake implementation to have its own specific
+ * optimizations.
+ */
 public interface TableMaintainer {
 
+  /** Status of table maintenance operations */
   enum Status {
-    RUNNING,
-    IDLE,
-    PENDING,
-    FAILED,
-    SUCCESS,
-    CANCELED // If Optimizing process failed, all tasks will be CANCELED except for SUCCESS tasks
+    RUNNING, // Maintenance operation is currently running
+    IDLE, // Maintainer is idle, ready for new operations
+    PENDING, // Maintenance operation is queued and waiting to start
+    FAILED, // Maintenance operation failed
+    SUCCESS, // Maintenance operation completed successfully
+    CANCELED // Maintenance operation was canceled (if parent process failed, all tasks except
+    // SUCCESS tasks are CANCELED)
   }
+
+  /**
+   * Get the current status of the table maintainer
+   *
+   * @return current status
+   */
+  Status getStatus();
+
+  /**
+   * Get the table format this maintainer supports
+   *
+   * @return table format (e.g., ICEBERG, PAIMON, MIXED_ICEBERG)
+   */
+  String getTableFormat();
+
+  /**
+   * Check if this maintainer supports a specific maintenance type
+   *
+   * @param type the maintenance type to check
+   * @return true if supported, false otherwise
+   */
+  boolean supports(MaintainerType type);
 }

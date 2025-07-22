@@ -18,22 +18,61 @@
 
 package org.apache.amoro.maintainer.api;
 
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.shade.guava32.com.google.common.base.MoreObjects;
 
-import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Base input class for table maintenance operations. Provides common configuration parameters for
+ * all maintenance operations across different data lake implementations.
+ *
+ * <p>This class includes universal optimization parameters such as: - Snapshot retention
+ * configuration - Orphan file cleanup settings - Execution parallelism and timeout settings - Data
+ * lake specific configurations
+ */
 public class BaseMaintainerInput implements TableMaintainerOptimizing.MaintainerInput {
 
-  private final Map<String, String> options = new HashMap<>();
   private final String database;
+  private final String table;
+  private final String catalog;
+  private final TableFormat tableFormat;
+  private final Map<String, String> options;
 
-  public BaseMaintainerInput(String database) {
+  /**
+   * Construct base maintainer input with essential table identification
+   *
+   * @param catalog catalog name
+   * @param database database name
+   * @param table table name
+   */
+  public BaseMaintainerInput(
+      String catalog,
+      String database,
+      String table,
+      TableFormat tableFormat,
+      Map<String, String> options) {
+    this.catalog = catalog;
     this.database = database;
+    this.table = table;
+    this.tableFormat = tableFormat;
+    this.options = options;
   }
 
   public String getDatabase() {
     return database;
+  }
+
+  public String getTable() {
+    return table;
+  }
+
+  public String getCatalog() {
+    return catalog;
+  }
+
+  public TableFormat getTableFormat() {
+    return tableFormat;
   }
 
   @Override
@@ -53,6 +92,12 @@ public class BaseMaintainerInput implements TableMaintainerOptimizing.Maintainer
 
   @Override
   public String toString() {
-    return MoreObjects.toStringHelper(this).add("options", options).toString();
+    return MoreObjects.toStringHelper(this)
+        .add("catalog", catalog)
+        .add("database", database)
+        .add("table", table)
+        .add("tableFormat", tableFormat.name())
+        .add("options", options)
+        .toString();
   }
 }

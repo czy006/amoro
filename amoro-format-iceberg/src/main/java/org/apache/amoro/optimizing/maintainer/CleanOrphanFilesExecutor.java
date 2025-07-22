@@ -18,7 +18,6 @@
 
 package org.apache.amoro.optimizing.maintainer;
 
-import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.io.AuthenticatedFileIO;
 import org.apache.amoro.io.AuthenticatedFileIOs;
@@ -44,6 +43,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -69,7 +69,7 @@ public class CleanOrphanFilesExecutor implements MaintainerExecutor<CleanOrphanO
   public static final String EXPIRE_TIMESTAMP_S = "TIMESTAMP_S";
 
   public CleanOrphanFilesExecutor(IcebergCleanOrphanInput input) {
-    this.table = input.getTable();
+    this.table = input.getIcebergTable();
     this.database = input.getDatabase();
     this.orphanExistingMinutes = input.getOrphanExistingMinutes();
     this.catalogMeta = input.getCatalogMeta();
@@ -78,22 +78,27 @@ public class CleanOrphanFilesExecutor implements MaintainerExecutor<CleanOrphanO
   @Override
   public CleanOrphanOutPut execute() {
     long keepTime = orphanExistingMinutes * 60 * 1000;
-
+    long startTime = System.currentTimeMillis();
     CleanOrphanOutPut cleanContentFilesOutPut =
         cleanContentFiles(System.currentTimeMillis() - keepTime);
 
     // refresh
     table.refresh();
-
     // clear metadata files
     CleanOrphanOutPut cleanMetadataOutPut = cleanMetadata(System.currentTimeMillis() - keepTime);
-
+    long endTime = System.currentTimeMillis();
     return new CleanOrphanOutPut(
         catalogMeta.getCatalogName(),
         database,
         table.name(),
-        TableFormat.ICEBERG.name(),
-        System.currentTimeMillis(),
+        MaintainerType.CLEAN_ORPHAN_FILES,
+        startTime,
+        endTime,
+        endTime,
+        endTime - startTime,
+        true,
+        null,
+        new HashMap<>(),
         cleanContentFilesOutPut.getExpectedFileCount() + cleanMetadataOutPut.getExpectedFileCount(),
         cleanContentFilesOutPut.getDeletedFileCount() + cleanMetadataOutPut.getDeletedFileCount());
   }
@@ -119,6 +124,7 @@ public class CleanOrphanFilesExecutor implements MaintainerExecutor<CleanOrphanO
   }
 
   private CleanOrphanOutPut clearInternalTableContentsFiles(long lastTime, Set<String> exclude) {
+    long startTime = System.currentTimeMillis();
     String dataLocation = table.location() + File.separator + DATA_FOLDER_NAME;
     int expected = 0, deleted = 0;
 
@@ -147,15 +153,21 @@ public class CleanOrphanFilesExecutor implements MaintainerExecutor<CleanOrphanO
                 table.name()));
       }
     }
-
+    long endTime = System.currentTimeMillis();
     final int finalExpected = expected;
     final int finalDeleted = deleted;
     return new CleanOrphanOutPut(
         catalogMeta.getCatalogName(),
         database,
         table.name(),
-        TableFormat.ICEBERG.name(),
-        System.currentTimeMillis(),
+        MaintainerType.CLEAN_ORPHAN_FILES,
+        startTime,
+        endTime,
+        endTime,
+        endTime - startTime,
+        true,
+        null,
+        new HashMap<>(),
         finalExpected,
         finalDeleted);
   }
@@ -223,6 +235,7 @@ public class CleanOrphanFilesExecutor implements MaintainerExecutor<CleanOrphanO
   }
 
   private CleanOrphanOutPut clearInternalTableMetadata(long lastTime) {
+    long startTime = System.currentTimeMillis();
     Set<String> validFiles = getValidMetadataFiles(table);
     LOG.info("{} table getRuntime {} valid files", table.name(), validFiles.size());
     Pattern excludeFileNameRegex = getExcludeFileNameRegex(table);
@@ -240,12 +253,19 @@ public class CleanOrphanFilesExecutor implements MaintainerExecutor<CleanOrphanO
         deleted += TableFileUtil.deleteFiles(io, filesToDelete);
       }
     }
+    long endTime = System.currentTimeMillis();
     return new CleanOrphanOutPut(
         catalogMeta.getCatalogName(),
         database,
         table.name(),
-        TableFormat.ICEBERG.name(),
-        System.currentTimeMillis(),
+        MaintainerType.CLEAN_ORPHAN_FILES,
+        startTime,
+        endTime,
+        endTime,
+        endTime - startTime,
+        true,
+        null,
+        new HashMap<>(),
         0,
         deleted);
   }

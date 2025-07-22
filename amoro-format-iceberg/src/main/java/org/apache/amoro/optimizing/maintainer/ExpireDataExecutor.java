@@ -67,6 +67,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -98,7 +99,7 @@ public class ExpireDataExecutor implements MaintainerExecutor<IcebergExpireDataO
     this.expirationConfig = icebergExpireDataInput.getExpirationConfig();
     this.catalogMeta = icebergExpireDataInput.getCatalogMeta();
     this.database = icebergExpireDataInput.getDatabase();
-    this.table = icebergExpireDataInput.getTable();
+    this.table = icebergExpireDataInput.getIcebergTable();
   }
 
   @Override
@@ -578,6 +579,7 @@ public class ExpireDataExecutor implements MaintainerExecutor<IcebergExpireDataO
   }
 
   IcebergExpireDataOutput expireFiles(ExpireFiles expiredFiles, long expireTimestamp) {
+    long startTime = System.currentTimeMillis();
     long snapshotId = IcebergTableUtil.getSnapshotId(table, false);
     Queue<DataFile> dataFiles = expiredFiles.dataFiles;
     Queue<DeleteFile> deleteFiles = expiredFiles.deleteFiles;
@@ -615,14 +617,20 @@ public class ExpireDataExecutor implements MaintainerExecutor<IcebergExpireDataO
         deleteFiles.size(),
         deleteFiles.stream().map(ContentFile::path).collect(Collectors.joining(",")),
         table.name());
+    long endTime = System.currentTimeMillis();
     return new IcebergExpireDataOutput(
         catalogMeta.getCatalogName(),
         database,
         table.name(),
-        this.type().name(),
-        System.currentTimeMillis(),
-        expireTimestamp,
-        dataFiles.size(),
-        deleteFiles.size());
+        MaintainerType.EXPIRE_DATA,
+        startTime,
+        endTime,
+        endTime,
+        endTime - startTime,
+        true,
+        null,
+        new HashMap<>(),
+        (long) dataFiles.size(),
+        (long) deleteFiles.size());
   }
 }

@@ -47,5 +47,4 @@ public class JavaProcessExecutor extends PeriodicExternalScheduler {
   protected long getNextExecutingTime(DefaultTableRuntime tableRuntime) {
     return 1800000;
   }
-
 }

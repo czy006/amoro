@@ -60,10 +60,7 @@ public class StandaloneTableMaintainerExternalResource implements ExternalResour
             "%s/bin/maintainer.sh start %s", buildTableMaintainerStartupArgsString(process));
     LOG.info("Starting table maintainer cmd: " + startCmd);
     Resource.Builder builder =
-        new Resource.Builder(
-            tableIdentifier.toString(),
-            "default",
-            ResourceType.TABLE_MAINTAINER);
+        new Resource.Builder(tableIdentifier.toString(), "default", ResourceType.TABLE_MAINTAINER);
     builder.setThreadCount(4);
     builder.setMemoryMb(4098);
     return builder.build();

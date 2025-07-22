@@ -26,33 +26,41 @@ import java.util.Map;
 
 public class ExpireSnapshotsOutput extends BaseMaintainerOutput {
 
-  private final Long deleteFilesTotal;
-
   public ExpireSnapshotsOutput(
       String catalog,
       String database,
       String table,
-      String type,
+      MaintainerType type,
+      Long startTime,
       Long lastTime,
-      Long deleteFilesTotal) {
-    super(catalog, database, table, type, lastTime);
-    this.deleteFilesTotal = deleteFilesTotal;
-  }
-
-  public Long getDeleteFilesTotal() {
-    return deleteFilesTotal;
+      Long endTime,
+      Long executionTimeMs,
+      Boolean success,
+      String errorMessage,
+      Map<String, String> summary) {
+    super(
+        catalog,
+        database,
+        table,
+        type,
+        startTime,
+        lastTime,
+        endTime,
+        executionTimeMs,
+        success,
+        errorMessage,
+        summary);
   }
 
   @Override
   public String toString() {
-    return new ToStringBuilder(this).append("deleteFilesTotal", deleteFilesTotal).toString();
+    return new ToStringBuilder(this).toString();
   }
 
   @Override
   public Map<String, String> summary() {
     Map<String, String> summary = super.summary();
     summary.put("type", MaintainerType.EXPIRE_SNAPSHOTS.name());
-    summary.put("deleteFilesTotal", deleteFilesTotal.toString());
     return summary;
   }
 }

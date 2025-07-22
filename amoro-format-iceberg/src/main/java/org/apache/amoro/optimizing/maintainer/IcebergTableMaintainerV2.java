@@ -18,7 +18,6 @@
 
 package org.apache.amoro.optimizing.maintainer;
 
-import org.apache.amoro.maintainer.api.TableMaintainer;
 import org.apache.amoro.maintainer.output.CleanOrphanOutPut;
 import org.apache.amoro.optimizing.IcebergCleanOrphanInput;
 import org.apache.amoro.optimizing.IcebergDanglingDeleteFilesInput;
@@ -34,7 +33,7 @@ import org.apache.amoro.optimizing.IcebergExpireSnapshotsOutput;
  * <p>Includes: clean content files, clean metadata, clean dangling delete files, expire snapshots,
  * auto create tags.
  */
-public interface IcebergTableMaintainerV2 extends TableMaintainer {
+public interface IcebergTableMaintainerV2 {
 
   /**
    * Clean table orphan files. Includes: data files, metadata files.

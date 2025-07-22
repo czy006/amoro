@@ -18,15 +18,15 @@
 
 package org.apache.amoro.maintainer.api;
 
+import org.apache.amoro.AmsClient;
+import org.apache.amoro.Constants;
+import org.apache.amoro.PooledAmsClient;
 import org.apache.amoro.api.CatalogMeta;
-import org.apache.amoro.api.ExecutorTask;
 import org.apache.amoro.api.ExecutorTaskResult;
-import org.apache.amoro.utils.SerializationUtil;
+import org.apache.amoro.client.AmsThriftUrl;
+import org.apache.amoro.shade.thrift.org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.HashMap;
-import java.util.Map;
 
 public class TableMaintainerExecutor {
 
@@ -39,38 +39,30 @@ public class TableMaintainerExecutor {
     this.abstractTableMaintainerOperator = new AbstractTableMaintainerOperator(config);
   }
 
-  public TableMaintainerDTO getTableMaintainer() throws Exception {
-    LOG.info(
-        "Get Table Metadata: catalog:{},db:{},tableName:{},type:{}",
-        config.getCatalog(),
-        config.getDatabase(),
-        config.getTable(),
-        config.getType());
-    ExecutorTask executorTask =
-        abstractTableMaintainerOperator.callAms(
-            client -> {
-              return (client.ackTableMetadata(
-                  config.getCatalog(), config.getDatabase(), config.getTable(), config.getType()));
-            });
-    Map<String, String> properties = executorTask.getServerConfig();
-    LOG.info("find ams properties:{}", properties.size());
-    byte[] taskInput = executorTask.getTaskInput();
-    CatalogMeta catalogMeta = SerializationUtil.simpleDeserialize(taskInput);
-    return new TableMaintainerDTO(properties == null ? new HashMap<>() : properties, catalogMeta);
-  }
-
   public void sendTaskResultToAms(ExecutorTaskResult taskResult) throws Exception {
     abstractTableMaintainerOperator.callAms(
         client -> {
           client.completeTask(taskResult);
           return null;
         });
-    LOG.info(
-        "Send Table Maintainer Result: catalog:{},db:{},tableName:{},type:{},taskResult:{}",
-        config.getCatalog(),
-        config.getDatabase(),
-        config.getTable(),
-        config.getType(),
-        taskResult.toString());
+  }
+
+  /**
+   * Load catalog meta from metastore. thrift://ams-host:port/catalog_name
+   *
+   * @param catalogUrl - catalog url
+   * @return catalog meta
+   */
+  public CatalogMeta loadMeta(String catalogUrl) {
+    AmsThriftUrl url = AmsThriftUrl.parse(catalogUrl, Constants.THRIFT_TABLE_SERVICE_NAME);
+    if (url.catalogName() == null || url.catalogName().contains("/")) {
+      throw new IllegalArgumentException("invalid catalog name " + url.catalogName());
+    }
+    AmsClient client = new PooledAmsClient(catalogUrl);
+    try {
+      return client.getCatalog(url.catalogName());
+    } catch (TException e) {
+      throw new IllegalStateException("failed when load catalog " + url.catalogName(), e);
+    }
   }
 }

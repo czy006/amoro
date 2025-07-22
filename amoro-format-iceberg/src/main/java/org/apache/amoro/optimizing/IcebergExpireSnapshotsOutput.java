@@ -18,7 +18,9 @@
 
 package org.apache.amoro.optimizing;
 
+import org.apache.amoro.maintainer.api.MaintainerType;
 import org.apache.amoro.maintainer.output.ExpireSnapshotsOutput;
+import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.iceberg.actions.ExpireSnapshots;
 
 import java.util.Map;
@@ -31,11 +33,28 @@ public class IcebergExpireSnapshotsOutput extends ExpireSnapshotsOutput {
       String catalog,
       String database,
       String table,
-      String type,
+      MaintainerType type,
+      Long startTime,
       Long lastTime,
+      Long endTime,
+      Long executionTimeMs,
+      Boolean success,
+      String errorMessage,
+      Map<String, String> summary,
       Long deleteFilesTotal,
       ExpireSnapshots.Result result) {
-    super(catalog, database, table, type, lastTime, deleteFilesTotal);
+    super(
+        catalog,
+        database,
+        table,
+        type,
+        startTime,
+        lastTime,
+        endTime,
+        executionTimeMs,
+        success,
+        errorMessage,
+        summary);
     this.result = result;
   }
 
@@ -54,5 +73,10 @@ public class IcebergExpireSnapshotsOutput extends ExpireSnapshotsOutput {
     summary.put(
         "deletedStatisticsFilesCount", String.valueOf(result.deletedStatisticsFilesCount()));
     return summary;
+  }
+
+  @Override
+  public String toString() {
+    return new ToStringBuilder(this).append("result", result).toString();
   }
 }

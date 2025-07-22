@@ -30,10 +30,31 @@ public class TableMaintainerConfig implements Serializable {
 
   @Option(
       name = "-a",
-      aliases = "--" + OptimizerTableMaintainerProperties.AMS_OPTIMIZER_URI,
+      aliases = "--" + OptimizerTableMaintainerProperties.AMS_SERVER_URI,
       usage = "The ams url",
       required = true)
   private String amsUrl;
+
+  @Option(
+      name = "-ap",
+      aliases = "--" + OptimizerTableMaintainerProperties.AMS_SERVER_OPTIMIZER_PORT,
+      usage = "The ams optimizer thrift port",
+      required = true)
+  private String amsOptimizerPort;
+
+  @Option(
+      name = "-mp",
+      aliases = "--" + OptimizerTableMaintainerProperties.AMS_SERVER_MAINTAINER_PORT,
+      usage = "The ams maintainer thrift port",
+      required = true)
+  private String amsMaintainerPort;
+
+  @Option(
+      name = "-i",
+      aliases = "--" + OptimizerTableMaintainerProperties.TABLE_ID,
+      usage = "The table id",
+      required = true)
+  private long id;
 
   @Option(
       name = "-p",
@@ -81,6 +102,10 @@ public class TableMaintainerConfig implements Serializable {
     return amsUrl;
   }
 
+  public String getAmsMaintainerUrl() {
+    return amsOptimizerPort;
+  }
+
   public void setAmsUrl(String amsUrl) {
     this.amsUrl = amsUrl;
   }
@@ -125,6 +150,14 @@ public class TableMaintainerConfig implements Serializable {
     this.table = table;
   }
 
+  public long getId() {
+    return id;
+  }
+
+  public void setId(long id) {
+    this.id = id;
+  }
+
   @Override
   public String toString() {
     return new ToStringBuilder(this)
@@ -134,6 +167,7 @@ public class TableMaintainerConfig implements Serializable {
         .append("catalog", catalog)
         .append("database", database)
         .append("table", table)
+        .append("id", id)
         .toString();
   }
 }

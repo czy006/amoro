@@ -21,19 +21,32 @@ package org.apache.amoro.maintainer.api;
 import java.io.Serializable;
 
 /**
- * Self-optimizing executor for file merging, such as merging small files and converting
- * equality-delete to position-delete.
+ * Executor interface for table maintenance operations. Provides the core execution contract for all
+ * maintenance operations across different data lake implementations.
+ *
+ * <p>This interface defines the standard pattern for executing maintenance operations such as
+ * snapshot expiration, orphan file cleanup, and data expiration. Implementations are expected to
+ * handle data lake specific execution logic while providing consistent input/output behavior.
+ *
+ * <p>Features: - Multi-lake support through pluggable implementations - Comprehensive error
+ * handling and status reporting - Performance metrics collection - Dry run support for testing -
+ * Configurable execution parameters
  */
 public interface MaintainerExecutor<O extends TableMaintainerOptimizing.MaintainerOutput>
     extends Serializable {
 
-  /** Execute compaction for {@link TableMaintainerOptimizing.MaintainerInput} */
+  /**
+   * Execute the maintenance operation with the configured input
+   *
+   * @return operation results containing comprehensive statistics and status
+   * @throws Exception if operation fails
+   */
   O execute();
 
   /**
-   * execute type name
+   * Get the type of maintenance operation this executor performs
    *
-   * @return name
+   * @return maintainer type (e.g., EXPIRE_SNAPSHOTS, CLEAN_ORPHAN_FILES)
    */
   MaintainerType type();
 }

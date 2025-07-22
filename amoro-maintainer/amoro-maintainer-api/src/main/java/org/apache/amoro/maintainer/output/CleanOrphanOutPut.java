@@ -33,11 +33,28 @@ public class CleanOrphanOutPut extends BaseMaintainerOutput {
       String catalog,
       String database,
       String table,
-      String type,
+      MaintainerType type,
+      Long startTime,
       Long lastTime,
+      Long endTime,
+      Long executionTimeMs,
+      Boolean success,
+      String errorMessage,
+      Map<String, String> summary,
       Integer expectedFileCount,
       Integer deletedFileCount) {
-    super(catalog, database, table, type, lastTime);
+    super(
+        catalog,
+        database,
+        table,
+        type,
+        startTime,
+        lastTime,
+        endTime,
+        executionTimeMs,
+        success,
+        errorMessage,
+        summary);
     this.expectedFileCount = expectedFileCount;
     this.DeletedFileCount = deletedFileCount;
   }

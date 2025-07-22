@@ -104,7 +104,7 @@ public class TableProcessState implements ProcessState {
     this.startTime = startTime;
   }
 
-  protected void setStatus(ProcessStatus status) {
+  public void setStatus(ProcessStatus status) {
     if (status == ProcessStatus.SUCCESS
         || status == ProcessStatus.FAILED
         || status == ProcessStatus.KILLED) {

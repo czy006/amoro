@@ -172,7 +172,7 @@ public class AmoroServiceContainer {
 
     LOG.info("Setting up AMS table executors...");
     InlineTableExecutors.getInstance().setup(tableService, serviceConfig);
-    ExternalTableExecutors.getInstance().setup(optimizerManager,tableService,serviceConfig);
+    ExternalTableExecutors.getInstance().setup(optimizerManager, tableService, serviceConfig);
     addHandlerChain(optimizingService.getTableRuntimeHandler());
     addHandlerChain(InlineTableExecutors.getInstance().getDataExpiringExecutor());
     addHandlerChain(InlineTableExecutors.getInstance().getSnapshotsExpiringExecutor());

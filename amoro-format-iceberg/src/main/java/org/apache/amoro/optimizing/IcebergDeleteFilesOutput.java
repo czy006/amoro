@@ -18,6 +18,7 @@
 
 package org.apache.amoro.optimizing;
 
+import org.apache.amoro.maintainer.api.MaintainerType;
 import org.apache.amoro.maintainer.output.DeleteFilesOutput;
 import org.apache.iceberg.DeleteFile;
 
@@ -32,11 +33,27 @@ public class IcebergDeleteFilesOutput extends DeleteFilesOutput {
       String catalog,
       String database,
       String table,
-      String type,
+      MaintainerType type,
+      Long startTime,
       Long lastTime,
-      DeleteFile[] deleteFiles,
-      Map<String, String> summary) {
-    super(catalog, database, table, type, lastTime);
+      Long endTime,
+      Long executionTimeMs,
+      Boolean success,
+      String errorMessage,
+      Map<String, String> summary,
+      DeleteFile[] deleteFiles) {
+    super(
+        catalog,
+        database,
+        table,
+        type,
+        startTime,
+        lastTime,
+        endTime,
+        executionTimeMs,
+        success,
+        errorMessage,
+        summary);
     this.deleteFiles = deleteFiles;
     this.deleteSummary = summary;
   }

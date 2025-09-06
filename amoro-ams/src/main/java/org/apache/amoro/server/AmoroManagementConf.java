@@ -239,6 +239,12 @@ public class AmoroManagementConf {
           .defaultValue(1261)
           .withDescription("Port that the optimizing service thrift server is bound to.");
 
+  public static final ConfigOption<Integer> MAINTAINER_SERVICE_THRIFT_BIND_PORT =
+      ConfigOptions.key("thrift-server.maintainer-service.bind-port")
+          .intType()
+          .defaultValue(1262)
+          .withDescription("Port that the maintainer service thrift server is bound to.");
+
   public static final ConfigOption<MemorySize> THRIFT_MAX_MESSAGE_SIZE =
       ConfigOptions.key("thrift-server.max-message-size")
           .memorySizeType()

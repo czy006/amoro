@@ -403,7 +403,7 @@ public class AmoroServiceContainer {
             maintainerProcessor,
             Constants.THRIFT_MAINTAINER_SERVICE_NAME,
             bindHost,
-            1262,
+            serviceConfig.getInteger(AmoroManagementConf.MAINTAINER_SERVICE_THRIFT_BIND_PORT),
             Executors.newCachedThreadPool(
                 getThriftThreadFactory(Constants.THRIFT_MAINTAINER_SERVICE_NAME)),
             selectorThreads,

@@ -21,8 +21,11 @@ package org.apache.amoro.maintainer.api;
 import org.apache.amoro.AmsClient;
 import org.apache.amoro.Constants;
 import org.apache.amoro.PooledAmsClient;
+import org.apache.amoro.ServerTableIdentifier;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.api.ExecutorTaskResult;
+import org.apache.amoro.api.TableIdentifier;
+import org.apache.amoro.api.TableMeta;
 import org.apache.amoro.client.AmsThriftUrl;
 import org.apache.amoro.shade.thrift.org.apache.thrift.TException;
 import org.slf4j.Logger;
@@ -63,6 +66,16 @@ public class TableMaintainerExecutor {
       return client.getCatalog(url.catalogName());
     } catch (TException e) {
       throw new IllegalStateException("failed when load catalog " + url.catalogName(), e);
+    }
+  }
+
+  public TableMeta loadTable(String catalogUrl,ServerTableIdentifier id) {
+    AmsClient client = new PooledAmsClient(catalogUrl);
+    try {
+      TableIdentifier tableIdentifier = new TableIdentifier(id.getCatalog(),id.getDatabase(),id.getTableName());
+      return client.getTable(tableIdentifier);
+    } catch (TException e) {
+      throw new IllegalStateException("failed when load catalog " + catalogUrl, e);
     }
   }
 }

@@ -40,21 +40,14 @@ public class TableMaintainerConfig implements Serializable {
       aliases = "--" + OptimizerTableMaintainerProperties.AMS_SERVER_OPTIMIZER_PORT,
       usage = "The ams optimizer thrift port",
       required = true)
-  private String amsOptimizerPort;
+  private Integer amsOptimizerPort;
 
   @Option(
       name = "-mp",
       aliases = "--" + OptimizerTableMaintainerProperties.AMS_SERVER_MAINTAINER_PORT,
       usage = "The ams maintainer thrift port",
       required = true)
-  private String amsMaintainerPort;
-
-  @Option(
-      name = "-i",
-      aliases = "--" + OptimizerTableMaintainerProperties.TABLE_ID,
-      usage = "The table id",
-      required = true)
-  private long id;
+  private Integer amsMaintainerPort;
 
   @Option(
       name = "-p",
@@ -69,6 +62,14 @@ public class TableMaintainerConfig implements Serializable {
       usage = "Table maintainer type,such as ICEBERG/PAIMON",
       required = true)
   private String type;
+
+  @Option(
+          name = "-i",
+          aliases = "--" + OptimizerTableMaintainerProperties.TABLE_ID,
+          usage = "The table id",
+          required = true)
+  private long id;
+
 
   @Option(
       name = "-c",
@@ -100,10 +101,6 @@ public class TableMaintainerConfig implements Serializable {
 
   public String getAmsUrl() {
     return amsUrl;
-  }
-
-  public String getAmsMaintainerUrl() {
-    return amsOptimizerPort;
   }
 
   public void setAmsUrl(String amsUrl) {
@@ -156,6 +153,22 @@ public class TableMaintainerConfig implements Serializable {
 
   public void setId(long id) {
     this.id = id;
+  }
+
+  public Integer getAmsOptimizerPort() {
+    return amsOptimizerPort;
+  }
+
+  public void setAmsOptimizerPort(Integer amsOptimizerPort) {
+    this.amsOptimizerPort = amsOptimizerPort;
+  }
+
+  public Integer getAmsMaintainerPort() {
+    return amsMaintainerPort;
+  }
+
+  public void setAmsMaintainerPort(Integer amsMaintainerPort) {
+    this.amsMaintainerPort = amsMaintainerPort;
   }
 
   @Override

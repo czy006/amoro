@@ -30,6 +30,8 @@ ams:
       worker-thread-count: 20
     optimizing-service:
       bind-port: 1261
+    maintainer-service:
+      bind-port: 1262
 
   http-server:
     session-timeout: 7d

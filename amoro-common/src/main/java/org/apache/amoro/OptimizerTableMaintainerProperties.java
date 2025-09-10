@@ -34,5 +34,5 @@ public class OptimizerTableMaintainerProperties {
   public static final String OPTIMIZER_CATALOG = "catalog";
   public static final String OPTIMIZER_DATABASE = "database";
   public static final String OPTIMIZER_TABLE = "table";
-  public static final String TABLE_ID = "table";
+  public static final String TABLE_ID = "identify";
 }

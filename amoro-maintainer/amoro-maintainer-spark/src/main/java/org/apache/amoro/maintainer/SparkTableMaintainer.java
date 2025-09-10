@@ -28,6 +28,7 @@ import org.apache.amoro.maintainer.api.TableMaintainerExecutor;
 import org.apache.amoro.maintainer.factorys.SparkIcebergFactory;
 import org.apache.amoro.maintainer.iceberg.ConfigUtils;
 import org.apache.amoro.maintainer.iceberg.SparkExpireSnapshotsFactory;
+import org.apache.amoro.maintainer.utils.AmsUtils;
 import org.apache.amoro.optimizing.IcebergExpireSnapshotInput;
 import org.apache.amoro.optimizing.IcebergExpireSnapshotsOutput;
 import org.apache.iceberg.Table;
@@ -49,7 +50,6 @@ public class SparkTableMaintainer {
   private static final Logger LOG = LoggerFactory.getLogger(SparkTableMaintainer.class);
 
   public static void main(String[] args) throws Exception {
-    // 需要知道不同的端口 OPTIMER URL 和 maintainer 不一样
     TableMaintainerConfig config = new TableMaintainerConfig(args);
     TableFormat tableFormat = TableFormat.valueOf(config.getType());
     ServerTableIdentifier serverTableIdentifier =
@@ -60,10 +60,9 @@ public class SparkTableMaintainer {
             config.getTable(),
             tableFormat);
     LOG.info("Starting Spark Table Maintainer,Server Table Identifier: {}", serverTableIdentifier);
-    // 获取信息 构建CatalogMeta，根据不同的CatalogMeta加载不同的东西
     TableMaintainerExecutor executor = new TableMaintainerExecutor(config);
     // use ams optimizer port
-    CatalogMeta catalogMeta = executor.loadMeta(config.getAmsUrl() + "/" + config.getCatalog());
+    CatalogMeta catalogMeta = executor.loadMeta(AmsUtils.getAmsMetaDataUrl(config));
 
     // 根据工厂类创建不同的SparkSession，我们可以分为PaimonFactory、IcebergFactory、MixedIcebergFactory
     String[] formats = catalogMeta.getCatalogProperties().get("table-formats").split(",");

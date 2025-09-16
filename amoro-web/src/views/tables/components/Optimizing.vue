@@ -79,6 +79,7 @@ const loading = ref<boolean>(false)
 const cancelDisabled = ref(true)
 const pagination = reactive(usePagination())
 const breadcrumbPagination = reactive(usePagination())
+const lastSnapshot = ref<string | null>(null) // Store last snapshot ID for cursor-based pagination
 const route = useRoute()
 const query = route.query
 const sourceData = reactive({
@@ -111,9 +112,18 @@ async function refreshOptimizingProcesses() {
       status: statusType.value || '',
       page: pagination.current,
       pageSize: pagination.pageSize,
+      lastSnapshot: lastSnapshot.value,
     } as any)
     const { list, total = 0 } = result
     pagination.total = total
+    
+    // Update lastSnapshot with the last item's processId from current page
+    if (list && list.length > 0) {
+      lastSnapshot.value = list[list.length - 1].processId?.toString() || null
+    } else {
+      lastSnapshot.value = null
+    }
+    
     dataSource.push(...[...list || []].map((item) => {
       const { inputFiles = {}, outputFiles = {} } = item
       return {
@@ -169,6 +179,10 @@ function change({ current = 1, pageSize = 25 }) {
     breadcrumbPagination.pageSize = pageSize
   }
   else {
+    // Reset lastSnapshot when returning to first page or changing page size
+    if (current === 1 || pageSize !== pagination.pageSize) {
+      lastSnapshot.value = null
+    }
     pagination.current = current
     if (pageSize !== pagination.pageSize) {
       pagination.current = 1
@@ -218,12 +232,23 @@ async function refreshOptimizingTasks() {
   }
 }
 
+function handleFilterChange() {
+  // Reset cursor-based pagination when filters change
+  lastSnapshot.value = null
+  pagination.current = 1
+  refresh()
+}
+
 function toggleBreadcrumb(rowProcessId: number, status: string) {
   processId.value = rowProcessId
   cancelDisabled.value = status !== 'RUNNING'
   hasBreadcrumb.value = !hasBreadcrumb.value
   if (hasBreadcrumb.value) {
     breadcrumbPagination.current = 1
+  } else {
+    // Reset cursor-based pagination when returning to main view
+    lastSnapshot.value = null
+    pagination.current = 1
   }
   refresh()
 }
@@ -241,11 +266,11 @@ onMounted(() => {
       <a-space class="filter-form">
         <a-select
           v-model:value="actionType" allow-clear placeholder="Type" :options="actionTypeList"
-          style="min-width: 150px;" @change="refresh"
+          style="min-width: 150px;" @change="handleFilterChange"
         />
         <a-select
           v-model:value="statusType" allow-clear placeholder="Status" :options="statusTypeList"
-          style="min-width: 150px;" @change="refresh"
+          style="min-width: 150px;" @change="handleFilterChange"
         />
       </a-space>
       <a-table

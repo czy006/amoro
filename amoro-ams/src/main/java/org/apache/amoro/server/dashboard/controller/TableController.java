@@ -529,6 +529,66 @@ public class TableController {
   }
 
   /**
+   * modify table properties
+   *
+   * @param ctx - context for handling the request and response
+   */
+  public void setTableOperations(Context ctx) throws Exception {
+    String catalogName = ctx.pathParam("catalog");
+    String db = ctx.pathParam("db");
+    String tableName = ctx.pathParam("table");
+    // Validate properties parameter from request body
+    Map<String, String> properties;
+    try {
+      properties = ctx.bodyAsClass(Map.class);
+      if (properties == null) {
+        LOG.error(
+            "Missing or invalid properties in request body for table {}.{}.{}",
+            catalogName,
+            db,
+            tableName);
+        ctx.status(500)
+            .json(OkResponse.of("Properties in request body is required and cannot be null"));
+        return;
+      }
+    } catch (Exception e) {
+      LOG.error(
+          "Invalid JSON in request body for table {}.{}.{}: {}",
+          catalogName,
+          db,
+          tableName,
+          e.getMessage());
+      ctx.status(400).json(OkResponse.of("Invalid JSON format in request body: " + e.getMessage()));
+      return;
+    }
+
+    if (properties.isEmpty()) {
+      LOG.warn("Empty properties map provided for table {}.{}.{}", catalogName, db, tableName);
+      ctx.status(400).json(OkResponse.of("Properties in request body cannot be empty"));
+      return;
+    }
+
+    LOG.info("Modifying properties for table {}.{}.{}: {}", catalogName, db, tableName, properties);
+
+    try {
+      Map<String, String> modifyProperties =
+          tableDescriptor.modifyProperties(
+              TableIdentifier.of(catalogName, db, tableName).buildTableIdentifier(), properties);
+      LOG.info("Successfully modified properties for table {}.{}.{}", catalogName, db, tableName);
+      ctx.json(OkResponse.of(modifyProperties));
+    } catch (Exception e) {
+      LOG.error(
+          "Failed to modify properties for table {}.{}.{}: {}",
+          catalogName,
+          db,
+          tableName,
+          e.getMessage(),
+          e);
+      ctx.status(500).json(OkResponse.of("Failed to modify table properties: " + e.getMessage()));
+    }
+  }
+
+  /**
    * get table list of catalog.db.
    *
    * @param ctx - context for handling the request and response

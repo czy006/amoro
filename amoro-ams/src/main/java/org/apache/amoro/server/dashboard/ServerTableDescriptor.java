@@ -160,6 +160,13 @@ public class ServerTableDescriptor extends PersistentBase {
     return formatTableDescriptor.getTableOptimizingTypes(amoroTable);
   }
 
+  public Map<String, String> modifyProperties(
+      TableIdentifier tableIdentifier, Map<String, String> inputProperties) {
+    AmoroTable<?> amoroTable = loadTable(tableIdentifier);
+    FormatTableDescriptor formatTableDescriptor = formatDescriptorMap.get(amoroTable.format());
+    return formatTableDescriptor.modifyProperties(amoroTable, inputProperties);
+  }
+
   private AmoroTable<?> loadTable(TableIdentifier identifier) {
     ServerCatalog catalog = catalogManager.getServerCatalog(identifier.getCatalog());
     return catalog.loadTable(identifier.getDatabase(), identifier.getTableName());

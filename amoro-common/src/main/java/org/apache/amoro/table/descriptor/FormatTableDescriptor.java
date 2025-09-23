@@ -28,7 +28,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 /** API for obtaining metadata information of various formats. */
-public interface FormatTableDescriptor {
+public interface FormatTableDescriptor extends FormatTableProperties {
 
   /**
    * Global io-executor pool for table descriptor
@@ -89,4 +89,10 @@ public interface FormatTableDescriptor {
 
   /** Get the consumer information of the {@link AmoroTable}. */
   List<ConsumerInfo> getTableConsumerInfos(AmoroTable<?> amoroTable);
+
+  @Override
+  default Map<String, String> modifyProperties(
+      AmoroTable<?> amoroTable, Map<String, String> inputProperties) {
+    throw new UnsupportedOperationException("Table modify properties is not supported this table");
+  }
 }

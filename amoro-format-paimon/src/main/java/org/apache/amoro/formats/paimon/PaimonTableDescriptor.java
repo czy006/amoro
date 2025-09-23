@@ -60,6 +60,8 @@ import org.apache.paimon.manifest.ManifestEntry;
 import org.apache.paimon.manifest.ManifestFile;
 import org.apache.paimon.manifest.ManifestFileMeta;
 import org.apache.paimon.manifest.ManifestList;
+import org.apache.paimon.schema.SchemaChange;
+import org.apache.paimon.schema.TableSchema;
 import org.apache.paimon.table.DataTable;
 import org.apache.paimon.table.FileStoreTable;
 import org.apache.paimon.utils.BranchManager;
@@ -599,8 +601,6 @@ public class PaimonTableDescriptor implements FormatTableDescriptor {
           summary.put("bucket", String.valueOf(bucket));
           summary.put("deleted-files-count", String.valueOf(stats.deletedFiles));
           summary.put("added-files-count", String.valueOf(stats.addedFilePaths.size()));
-          summary.put("removed-files", String.join(",", stats.removedFilePaths));
-          summary.put("added-files", String.join(",", stats.addedFilePaths));
 
           // Create OptimizingTaskInfo
           OptimizingTaskInfo taskInfo =
@@ -630,6 +630,34 @@ public class PaimonTableDescriptor implements FormatTableDescriptor {
       return Collections.emptyList();
     } catch (Exception e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  @Override
+  public Map<String, String> modifyProperties(
+      AmoroTable<?> amoroTable, Map<String, String> inputProperties) {
+    try {
+      FileStoreTable table = getTable(amoroTable);
+      TableSchema currentSchema = table.schema();
+      Map<String, String> originalOptions = new HashMap<>(currentSchema.options());
+      // Commit schema changes
+      ArrayList<SchemaChange> changes = new ArrayList<>(inputProperties.size());
+      inputProperties.forEach(
+          (key, value) -> {
+            if (originalOptions.containsKey(key)) {
+              LOG.info("Paimon table option {} for table {} is modify", key, amoroTable.id());
+            }
+            if (StringUtils.isBlank(value)) {
+              changes.add(SchemaChange.removeOption(key));
+            } else {
+              changes.add(SchemaChange.setOption(key, value));
+            }
+          });
+      TableSchema tableSchema = table.schemaManager().commitChanges(changes);
+      return tableSchema.options();
+    } catch (Exception e) {
+      LOG.error("Failed to modify properties for table {}: {}", amoroTable.id(), e.getMessage(), e);
+      throw new RuntimeException("Failed to modify properties for table " + amoroTable.id(), e);
     }
   }
 

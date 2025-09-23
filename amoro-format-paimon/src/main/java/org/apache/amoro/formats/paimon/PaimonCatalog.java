@@ -89,9 +89,10 @@ public class PaimonCatalog implements FormatCatalog {
   @Override
   public AmoroTable<?> loadTable(String database, String table) {
     try {
+      Identifier identifier = Identifier.create(database, table);
+      catalog.invalidateTable(identifier);
       return new PaimonTable(
-          TableIdentifier.of(name, database, table),
-          catalog.getTable(Identifier.create(database, table)));
+          TableIdentifier.of(name, database, table), catalog.getTable(identifier));
     } catch (Catalog.TableNotExistException e) {
       throw new NoSuchTableException(e);
     }

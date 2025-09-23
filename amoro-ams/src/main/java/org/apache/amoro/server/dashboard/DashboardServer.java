@@ -260,6 +260,9 @@ public class DashboardServer {
             get(
                 "/catalogs/{catalog}/dbs/{db}/tables/{table}/operations",
                 tableController::getTableOperations);
+            post(
+                "/catalogs/{catalog}/dbs/{db}/tables/{table}/properties",
+                tableController::setTableOperations);
             get("/catalogs/{catalog}/dbs/{db}/tables/{table}/tags", tableController::getTableTags);
             get(
                 "/catalogs/{catalog}/dbs/{db}/tables/{table}/branches",

@@ -72,6 +72,7 @@ import org.apache.amoro.table.descriptor.TagOrBranchInfo;
 import org.apache.amoro.utils.MixedDataFiles;
 import org.apache.amoro.utils.MixedTableUtil;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.iceberg.ContentFile;
 import org.apache.iceberg.HasTableOperations;
@@ -83,6 +84,7 @@ import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.SnapshotSummary;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.UpdateProperties;
 import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.types.Types;
@@ -280,6 +282,32 @@ public class MixedAndIcebergTableDescriptor extends PersistentBase
         throw new IllegalArgumentException(
             "invalid operation: " + operationType + ", only support all/optimizing/non-optimizing");
     }
+  }
+
+  @Override
+  public Map<String, String> modifyProperties(
+      AmoroTable<?> amoroTable, Map<String, String> inputProperties) {
+    MixedTable table = getTable(amoroTable);
+    TableFormat format = table.format();
+    if (format.equals(TableFormat.ICEBERG)) {
+      UpdateProperties update = table.updateProperties();
+      try {
+        inputProperties.forEach(
+            (key, value) -> {
+              if (StringUtils.isBlank(value)) {
+                update.remove(key);
+              } else {
+                update.set(key, value);
+              }
+            });
+        update.commit();
+        table.refresh();
+        return table.properties();
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to commit table properties", e);
+      }
+    }
+    return FormatTableDescriptor.super.modifyProperties(amoroTable, inputProperties);
   }
 
   private void collectSnapshots(

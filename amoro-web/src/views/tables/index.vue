@@ -25,6 +25,7 @@ import UOperations from './components/Operations.vue'
 import USnapshots from './components/Snapshots.vue'
 import UOptimizing from './components/Optimizing.vue'
 import UHealthScore from './components/HealthScoreDetails.vue'
+import UPropertiesView from './components/properties.vue'
 import useStore from '@/store/index'
 import type { IBaseDetailInfo } from '@/types/common.type'
 
@@ -37,6 +38,7 @@ export default defineComponent({
     USnapshots,
     UOptimizing,
     UHealthScore,
+    UPropertiesView,
   },
   setup() {
     const router = useRouter()
@@ -49,6 +51,7 @@ export default defineComponent({
       { key: 'Snapshots', label: 'snapshots' },
       { key: 'Optimizing', label: 'optimizing' },
       { key: 'Operations', label: 'operations' },
+      { key: 'PropertiesView', label: 'properties' },
     ])
 
     const state = reactive({

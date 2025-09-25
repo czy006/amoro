@@ -231,3 +231,10 @@ export function getConsumers(params: { catalog: string, db: string, table: strin
   const { catalog, db, table } = params
   return request.get(`/api/ams/v1/tables/catalogs/${catalog}/dbs/${db}/tables/${table}/consumers`)
 }
+
+
+export function updateTableProperties(
+  { catalog = '' as string, db = '' as string, table = '' as string, properties = {} as IMap<string> },
+) {
+  return request.post(`api/ams/v1/tables/catalogs/${catalog}/dbs/${db}/tables/${table}/properties`, properties)
+}

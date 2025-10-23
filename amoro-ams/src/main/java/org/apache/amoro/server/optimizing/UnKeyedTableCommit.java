@@ -31,16 +31,19 @@ import org.apache.amoro.hive.utils.HiveTableUtil;
 import org.apache.amoro.hive.utils.TableTypeUtil;
 import org.apache.amoro.iceberg.Constants;
 import org.apache.amoro.op.SnapshotSummary;
-import org.apache.amoro.optimizing.OptimizingInputProperties;
 import org.apache.amoro.optimizing.RewriteFilesOutput;
 import org.apache.amoro.optimizing.RewriteStageTask;
+import org.apache.amoro.optimizing.TaskProperties;
 import org.apache.amoro.properties.HiveTableProperties;
+import org.apache.amoro.server.optimizing.TaskRuntime.Status;
 import org.apache.amoro.server.utils.IcebergTableUtil;
+import org.apache.amoro.shade.guava32.com.google.common.collect.Sets;
 import org.apache.amoro.table.MixedTable;
 import org.apache.amoro.table.UnkeyedTable;
 import org.apache.amoro.utils.ContentFiles;
 import org.apache.amoro.utils.IcebergThreadPools;
 import org.apache.amoro.utils.MixedTableUtil;
+import org.apache.amoro.utils.PropertyUtil;
 import org.apache.amoro.utils.TableFileUtil;
 import org.apache.amoro.utils.TablePropertyUtil;
 import org.apache.commons.collections.CollectionUtils;
@@ -57,7 +60,6 @@ import org.apache.iceberg.Transaction;
 import org.apache.iceberg.types.Types;
 import org.apache.iceberg.util.SnapshotUtil;
 import org.apache.iceberg.util.StructLikeMap;
-import org.glassfish.jersey.internal.guava.Sets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,6 +86,25 @@ public class UnKeyedTableCommit {
     this.targetSnapshotId = targetSnapshotId;
     this.table = table;
     this.tasks = tasks;
+  }
+
+  private Set<ContentFile<?>> getExcludedDeleteFiles(
+      List<TaskRuntime<RewriteStageTask>> successTasks) {
+    Set<ContentFile<?>> excludedDeleteFiles = new HashSet<>();
+    tasks.stream()
+        .filter(task -> !successTasks.contains(task))
+        .map(TaskRuntime::getTaskDescriptor)
+        .filter(task -> task.getInput().rewrittenDeleteFiles() != null)
+        .forEach(
+            task ->
+                excludedDeleteFiles.addAll(
+                    Arrays.stream(task.getInput().rewrittenDeleteFiles())
+                        .collect(Collectors.toSet())));
+    return excludedDeleteFiles;
+  }
+
+  private boolean needRemove(Set<ContentFile<?>> excludedDeleteFiles, ContentFile<?> deleteFile) {
+    return !excludedDeleteFiles.contains(deleteFile);
   }
 
   protected List<DataFile> moveFile2HiveIfNeed() {
@@ -186,15 +207,26 @@ public class UnKeyedTableCommit {
   }
 
   public void commit() throws OptimizingCommitException {
-    LOG.info("{} get tasks to commit {}", table.id(), tasks);
+    List<TaskRuntime<RewriteStageTask>> successTasks =
+        tasks.stream()
+            .filter(task -> task.getStatus() == Status.SUCCESS)
+            .collect(Collectors.toList());
+    if (successTasks.isEmpty()) {
+      LOG.info("No tasks to commit for table {}", table.id());
+      return;
+    }
 
+    long startTime = System.currentTimeMillis();
+    LOG.info("Starting to commit table {} with {} tasks.", table.id(), tasks.size());
+
+    Set<ContentFile<?>> excludedDeleteFiles = getExcludedDeleteFiles(successTasks);
     List<DataFile> hiveNewDataFiles = moveFile2HiveIfNeed();
     // collect files
     Set<DataFile> addedDataFiles = Sets.newHashSet();
     Set<DataFile> removedDataFiles = Sets.newHashSet();
     Set<DeleteFile> addedDeleteFiles = Sets.newHashSet();
     Set<DeleteFile> removedDeleteFiles = Sets.newHashSet();
-    tasks.stream()
+    successTasks.stream()
         .map(TaskRuntime::getTaskDescriptor)
         .forEach(
             task -> {
@@ -212,6 +244,7 @@ public class UnKeyedTableCommit {
               if (task.getInput().rewrittenDeleteFiles() != null) {
                 removedDeleteFiles.addAll(
                     Arrays.stream(task.getInput().rewrittenDeleteFiles())
+                        .filter(deleteFile -> needRemove(excludedDeleteFiles, deleteFile))
                         .map(ContentFiles::asDeleteFile)
                         .collect(Collectors.toSet()));
               }
@@ -231,11 +264,15 @@ public class UnKeyedTableCommit {
             transaction, removedDataFiles, addedDataFiles, removedDeleteFiles, addedDeleteFiles);
       }
       transaction.commitTransaction();
+      LOG.info(
+          "Successfully committed table {} in {} ms.",
+          table.id(),
+          System.currentTimeMillis() - startTime);
     } catch (Exception e) {
       if (needMoveFile2Hive()) {
         correctHiveData(addedDataFiles, addedDeleteFiles);
       }
-      LOG.warn("Optimize commit table {} failed, give up commit.", table.id(), e);
+      LOG.warn("Failed to commit table {}.", table.id(), e);
       throw new OptimizingCommitException("unexpected commit error ", e);
     }
   }
@@ -292,8 +329,13 @@ public class UnKeyedTableCommit {
   }
 
   protected boolean needMoveFile2Hive() {
-    return OptimizingInputProperties.parse(tasks.stream().findAny().get().getProperties())
-        .getMoveFile2HiveLocation();
+    return PropertyUtil.propertyAsBoolean(
+        tasks.stream()
+            .findAny()
+            .orElseThrow(() -> new RuntimeException("The tasks is empty"))
+            .getProperties(),
+        TaskProperties.MOVE_FILE_TO_HIVE_LOCATION,
+        false);
   }
 
   protected void correctHiveData(Set<DataFile> addedDataFiles, Set<DeleteFile> addedDeleteFiles)

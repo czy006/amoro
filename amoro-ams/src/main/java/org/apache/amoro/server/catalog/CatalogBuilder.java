@@ -23,14 +23,11 @@ import static org.apache.amoro.properties.CatalogMetaProperties.CATALOG_TYPE_CUS
 import static org.apache.amoro.properties.CatalogMetaProperties.CATALOG_TYPE_GLUE;
 import static org.apache.amoro.properties.CatalogMetaProperties.CATALOG_TYPE_HADOOP;
 import static org.apache.amoro.properties.CatalogMetaProperties.CATALOG_TYPE_HIVE;
-import static org.apache.amoro.properties.CatalogMetaProperties.CLIENT_POOL_SIZE;
-import static org.apache.amoro.properties.CatalogMetaProperties.CLIENT_POOL_SIZE_DEFAULT;
+import static org.apache.amoro.properties.CatalogMetaProperties.CATALOG_TYPE_REST;
 
 import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.CatalogMeta;
 import org.apache.amoro.config.Configurations;
-import org.apache.amoro.properties.CatalogMetaProperties;
-import org.apache.amoro.server.AmoroManagementConf;
 import org.apache.amoro.shade.guava32.com.google.common.base.Preconditions;
 import org.apache.amoro.shade.guava32.com.google.common.collect.ImmutableMap;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Sets;
@@ -45,27 +42,23 @@ public class CatalogBuilder {
   private static final Map<String, Set<TableFormat>> formatSupportedMatrix =
       ImmutableMap.of(
           CATALOG_TYPE_HADOOP,
-              Sets.newHashSet(
-                  TableFormat.ICEBERG,
-                  TableFormat.MIXED_ICEBERG,
-                  TableFormat.PAIMON,
-                  TableFormat.HUDI),
-          CATALOG_TYPE_GLUE, Sets.newHashSet(TableFormat.ICEBERG, TableFormat.MIXED_ICEBERG),
-          CATALOG_TYPE_CUSTOM, Sets.newHashSet(TableFormat.ICEBERG, TableFormat.MIXED_ICEBERG),
+          Sets.newHashSet(
+              TableFormat.ICEBERG, TableFormat.MIXED_ICEBERG, TableFormat.PAIMON, TableFormat.HUDI),
+          CATALOG_TYPE_GLUE,
+          Sets.newHashSet(TableFormat.ICEBERG, TableFormat.MIXED_ICEBERG),
+          CATALOG_TYPE_REST,
+          Sets.newHashSet(TableFormat.ICEBERG, TableFormat.MIXED_ICEBERG),
+          CATALOG_TYPE_CUSTOM,
+          Sets.newHashSet(TableFormat.ICEBERG, TableFormat.MIXED_ICEBERG),
           CATALOG_TYPE_HIVE,
-              Sets.newHashSet(
-                  TableFormat.ICEBERG,
-                  TableFormat.MIXED_ICEBERG,
-                  TableFormat.MIXED_HIVE,
-                  TableFormat.PAIMON,
-                  TableFormat.HUDI),
-          CATALOG_TYPE_AMS, Sets.newHashSet(TableFormat.ICEBERG, TableFormat.MIXED_ICEBERG));
-
-  private static String getAmsURI(Configurations serviceConfig) {
-    String host = serviceConfig.getString(AmoroManagementConf.SERVER_EXPOSE_HOST);
-    Integer port = serviceConfig.getInteger(AmoroManagementConf.TABLE_SERVICE_THRIFT_BIND_PORT);
-    return String.format("thrift://%s:%d", host, port);
-  }
+          Sets.newHashSet(
+              TableFormat.ICEBERG,
+              TableFormat.MIXED_ICEBERG,
+              TableFormat.MIXED_HIVE,
+              TableFormat.PAIMON,
+              TableFormat.HUDI),
+          CATALOG_TYPE_AMS,
+          Sets.newHashSet(TableFormat.ICEBERG, TableFormat.MIXED_ICEBERG));
 
   public static ServerCatalog buildServerCatalog(
       CatalogMeta catalogMeta, Configurations serverConfiguration) {
@@ -85,14 +78,9 @@ public class CatalogBuilder {
     switch (type) {
       case CATALOG_TYPE_HADOOP:
       case CATALOG_TYPE_GLUE:
+      case CATALOG_TYPE_REST:
       case CATALOG_TYPE_CUSTOM:
-        return new ExternalCatalog(catalogMeta);
       case CATALOG_TYPE_HIVE:
-        String amsUri = getAmsURI(serverConfiguration);
-        catalogMeta.getCatalogProperties().put(CatalogMetaProperties.AMS_URI, amsUri);
-        catalogMeta
-            .getCatalogProperties()
-            .put(CLIENT_POOL_SIZE, String.valueOf(CLIENT_POOL_SIZE_DEFAULT));
         return new ExternalCatalog(catalogMeta);
       case CATALOG_TYPE_AMS:
         return new InternalCatalogImpl(catalogMeta, serverConfiguration);

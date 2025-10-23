@@ -20,9 +20,12 @@ package org.apache.amoro.server.table;
 
 import org.apache.amoro.AmoroTable;
 import org.apache.amoro.ServerTableIdentifier;
+import org.apache.amoro.TableRuntime;
 import org.apache.amoro.server.catalog.InternalCatalog;
 
 public interface TableService extends TableRuntimeHandler {
+
+  void addHandlerChain(RuntimeHandlerChain handler);
 
   void initialize();
 
@@ -32,7 +35,7 @@ public interface TableService extends TableRuntimeHandler {
 
   void onTableDropped(InternalCatalog catalog, ServerTableIdentifier identifier);
 
-  DefaultTableRuntime getRuntime(Long tableId);
+  TableRuntime getRuntime(Long tableId);
 
   default boolean contains(Long tableId) {
     return getRuntime(tableId) != null;

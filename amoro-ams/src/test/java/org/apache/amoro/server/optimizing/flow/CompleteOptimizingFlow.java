@@ -32,21 +32,18 @@ import org.apache.amoro.hive.optimizing.MixedHiveRewriteExecutor;
 import org.apache.amoro.iceberg.Constants;
 import org.apache.amoro.optimizing.IcebergRewriteExecutor;
 import org.apache.amoro.optimizing.OptimizingExecutor;
-import org.apache.amoro.optimizing.OptimizingInputProperties;
 import org.apache.amoro.optimizing.RewriteFilesOutput;
 import org.apache.amoro.optimizing.RewriteStageTask;
 import org.apache.amoro.optimizing.plan.AbstractOptimizingPlanner;
 import org.apache.amoro.server.optimizing.KeyedTableCommit;
 import org.apache.amoro.server.optimizing.TaskRuntime;
 import org.apache.amoro.server.optimizing.UnKeyedTableCommit;
-import org.apache.amoro.server.table.DefaultOptimizingState;
 import org.apache.amoro.server.table.DefaultTableRuntime;
 import org.apache.amoro.server.table.TableConfigurations;
 import org.apache.amoro.server.utils.IcebergTableUtil;
 import org.apache.amoro.table.MixedTable;
 import org.apache.amoro.utils.MixedDataFiles;
 import org.apache.amoro.utils.TablePropertyUtil;
-import org.apache.amoro.utils.map.StructLikeCollections;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.StructLike;
@@ -176,6 +173,7 @@ public class CompleteOptimizingFlow {
       Mockito.when(taskRuntime.getTaskDescriptor().getInput())
           .thenReturn(taskDescriptor.getInput());
       Mockito.when(taskRuntime.getProperties()).thenReturn(taskDescriptor.getProperties());
+      Mockito.when(taskRuntime.getStatus()).thenReturn(TaskRuntime.Status.SUCCESS);
       list.add(taskRuntime);
     }
     return list;
@@ -184,20 +182,17 @@ public class CompleteOptimizingFlow {
   private AbstractOptimizingPlanner planner() {
     table.refresh();
     DefaultTableRuntime tableRuntime = Mockito.mock(DefaultTableRuntime.class);
-    DefaultOptimizingState optimizingState = Mockito.mock(DefaultOptimizingState.class);
-    Mockito.when(tableRuntime.getOptimizingState()).thenReturn(optimizingState);
-    Mockito.when(optimizingState.getCurrentSnapshotId()).thenAnswer(f -> getCurrentSnapshotId());
-    Mockito.when(optimizingState.getCurrentChangeSnapshotId())
+
+    Mockito.when(tableRuntime.getCurrentSnapshotId()).thenAnswer(f -> getCurrentSnapshotId());
+    Mockito.when(tableRuntime.getCurrentChangeSnapshotId())
         .thenAnswer(f -> getCurrentChangeSnapshotId());
-    Mockito.when(optimizingState.getNewestProcessId()).thenReturn(1L);
-    Mockito.when(optimizingState.getPendingInput()).thenReturn(null);
-    Mockito.doCallRealMethod().when(optimizingState).getLastMinorOptimizingTime();
-    Mockito.doCallRealMethod().when(optimizingState).getLastMajorOptimizingTime();
-    Mockito.doCallRealMethod().when(optimizingState).getLastFullOptimizingTime();
-    Mockito.when(optimizingState.getOptimizingConfig()).thenAnswer(f -> optimizingConfig());
+    Mockito.when(tableRuntime.getProcessId()).thenReturn(1L);
+    Mockito.when(tableRuntime.getPendingInput()).thenReturn(null);
+    Mockito.when(tableRuntime.getLastMinorOptimizingTime()).thenReturn(0L);
+    Mockito.when(tableRuntime.getLastMajorOptimizingTime()).thenReturn(0L);
+    Mockito.when(tableRuntime.getLastFullOptimizingTime()).thenReturn(0L);
+    Mockito.when(tableRuntime.getOptimizingConfig()).thenAnswer(f -> optimizingConfig());
     Mockito.when(tableRuntime.getTableIdentifier())
-        .thenReturn(ServerTableIdentifier.of(1L, "a", "b", "c", table.format()));
-    Mockito.when(optimizingState.getTableIdentifier())
         .thenReturn(ServerTableIdentifier.of(1L, "a", "b", "c", table.format()));
     return IcebergTableUtil.createOptimizingPlanner(
         tableRuntime,
@@ -216,13 +211,10 @@ public class CompleteOptimizingFlow {
       TaskRuntime<RewriteStageTask> taskRuntime) {
     if (table.format() == TableFormat.ICEBERG) {
       return new IcebergRewriteExecutor(
-          taskRuntime.getTaskDescriptor().getInput(), table, StructLikeCollections.DEFAULT);
+          taskRuntime.getTaskDescriptor().getInput(), table, taskRuntime.getProperties());
     } else {
       return new MixedHiveRewriteExecutor(
-          taskRuntime.getTaskDescriptor().getInput(),
-          table,
-          StructLikeCollections.DEFAULT,
-          OptimizingInputProperties.parse(taskRuntime.getProperties()).getOutputDir());
+          taskRuntime.getTaskDescriptor().getInput(), table, taskRuntime.getProperties());
     }
   }
 

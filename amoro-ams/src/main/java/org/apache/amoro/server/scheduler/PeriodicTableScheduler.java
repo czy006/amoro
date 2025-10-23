@@ -22,9 +22,9 @@ import org.apache.amoro.Action;
 import org.apache.amoro.AmoroTable;
 import org.apache.amoro.IcebergActions;
 import org.apache.amoro.ServerTableIdentifier;
+import org.apache.amoro.TableRuntime;
 import org.apache.amoro.config.TableConfiguration;
 import org.apache.amoro.server.optimizing.OptimizingStatus;
-import org.apache.amoro.server.table.DefaultTableRuntime;
 import org.apache.amoro.server.table.RuntimeHandlerChain;
 import org.apache.amoro.server.table.TableService;
 import org.apache.amoro.shade.guava32.com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -78,7 +78,7 @@ public abstract class PeriodicTableScheduler extends RuntimeHandlerChain {
   }
 
   @Override
-  protected void initHandler(List<DefaultTableRuntime> tableRuntimeList) {
+  protected void initHandler(List<TableRuntime> tableRuntimeList) {
     tableRuntimeList.stream()
         .filter(this::enabled)
         .forEach(
@@ -92,7 +92,7 @@ public abstract class PeriodicTableScheduler extends RuntimeHandlerChain {
     logger.info("Table executor {} initialized", getClass().getSimpleName());
   }
 
-  private void executeTask(DefaultTableRuntime tableRuntime) {
+  private void executeTask(TableRuntime tableRuntime) {
     try {
       if (isExecutable(tableRuntime)) {
         execute(tableRuntime);
@@ -103,8 +103,7 @@ public abstract class PeriodicTableScheduler extends RuntimeHandlerChain {
     }
   }
 
-  protected final void scheduleIfNecessary(
-      DefaultTableRuntime tableRuntime, long millisecondsTime) {
+  protected final void scheduleIfNecessary(TableRuntime tableRuntime, long millisecondsTime) {
     if (isExecutable(tableRuntime)) {
       if (scheduledTables.add(tableRuntime.getTableIdentifier())) {
         executor.schedule(() -> executeTask(tableRuntime), millisecondsTime, TimeUnit.MILLISECONDS);
@@ -112,53 +111,80 @@ public abstract class PeriodicTableScheduler extends RuntimeHandlerChain {
     }
   }
 
-  protected abstract long getNextExecutingTime(DefaultTableRuntime tableRuntime);
+  protected abstract long getNextExecutingTime(TableRuntime tableRuntime);
 
-  protected abstract boolean enabled(DefaultTableRuntime tableRuntime);
+  protected abstract boolean enabled(TableRuntime tableRuntime);
 
-  protected abstract void execute(DefaultTableRuntime tableRuntime);
+  protected abstract void execute(TableRuntime tableRuntime);
 
   protected String getThreadName() {
     return String.join("-", StringUtils.splitByCharacterTypeCamelCase(getClass().getSimpleName()))
         .toLowerCase(Locale.ROOT);
   }
 
-  private boolean isExecutable(DefaultTableRuntime tableRuntime) {
+  private boolean isExecutable(TableRuntime tableRuntime) {
     return tableService.contains(tableRuntime.getTableIdentifier().getId())
         && enabled(tableRuntime);
   }
 
   @Override
-  public void handleConfigChanged(
-      DefaultTableRuntime tableRuntime, TableConfiguration originalConfig) {
+  public void handleConfigChanged(TableRuntime tableRuntime, TableConfiguration originalConfig) {
     // DO nothing by default
   }
 
   @Override
-  public void handleTableRemoved(DefaultTableRuntime tableRuntime) {
+  public void handleTableRemoved(TableRuntime tableRuntime) {
     // DO nothing, handling would be canceled when calling executeTable
   }
 
   @Override
-  public void handleStatusChanged(
-      DefaultTableRuntime tableRuntime, OptimizingStatus originalStatus) {}
+  public void handleStatusChanged(TableRuntime tableRuntime, OptimizingStatus originalStatus) {}
 
   @Override
-  public void handleTableAdded(AmoroTable<?> table, DefaultTableRuntime tableRuntime) {
+  public void handleTableAdded(AmoroTable<?> table, TableRuntime tableRuntime) {
     scheduleIfNecessary(tableRuntime, getStartDelay());
   }
 
   @Override
   protected void doDispose() {
-    executor.shutdownNow();
+
+    gracefulShutdown();
     logger.info("dispose thread pool for threads {}", getThreadName());
   }
 
-  protected long getStartDelay() {
-    return START_DELAY;
+  public void gracefulShutdown() {
+    if (executor == null || executor.isShutdown()) {
+      return;
+    }
+
+    try {
+      // Stop accepting new tasks.
+      executor.shutdown();
+
+      // Wait for the current task to complete, with a maximum waiting time of 30 seconds.
+      if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+        // If the timeout occurs, try to cancel the task that is currently being executed.
+        executor.shutdownNow();
+
+        // Wait again for the task response to be cancelled.
+        if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+          logger.error("The thread pool failed to close properly.");
+        }
+      }
+    } catch (InterruptedException e) {
+      // Re-cancel the interrupt status of the current thread.
+      Thread.currentThread().interrupt();
+      executor.shutdownNow();
+    }
   }
 
-  protected AmoroTable<?> loadTable(DefaultTableRuntime tableRuntime) {
+  protected abstract long getExecutorDelay();
+
+  protected long getStartDelay() {
+    return START_DELAY + getExecutorDelay();
+  }
+
+  protected AmoroTable<?> loadTable(TableRuntime tableRuntime) {
     return tableService.loadTable(tableRuntime.getTableIdentifier());
   }
 

@@ -116,6 +116,7 @@
         <junit5.version>5.9.1</junit5.version>
         <commons-pool2.version>2.12.0</commons-pool2.version>
         <commons-lang3.version>3.14.0</commons-lang3.version>
+        <commons-beanutils.version>1.11.0</commons-beanutils.version>
         <cglib.version>2.2.2</cglib.version>
         <curator.version>5.7.0</curator.version>
         <mockito.version>4.11.0</mockito.version>
@@ -134,7 +135,7 @@
         <postgres-jdbc.version>42.7.2</postgres-jdbc.version>
         <derby-jdbc.version>10.14.2.0</derby-jdbc.version>
         <commons-dbcp2.version>2.9.0</commons-dbcp2.version>
-        <netty.version>4.1.118.Final</netty.version>
+        <netty.version>4.1.124.Final</netty.version>
         <javalin.version>4.6.8</javalin.version>
         <kyuubi-hive-jdbc-shaded.version>1.6.0-incubating</kyuubi-hive-jdbc-shaded.version>
         <rocksdb.version>7.10.2</rocksdb.version>
@@ -375,6 +376,12 @@
             </dependency>
 
             <dependency>
+                <groupId>org.apache.iceberg</groupId>
+                <artifactId>iceberg-arrow</artifactId>
+                <version>${iceberg.version}</version>
+            </dependency>
+
+            <dependency>
                 <groupId>com.aliyun.oss</groupId>
                 <artifactId>aliyun-sdk-oss</artifactId>
                 <version>${aliyun-sdk-oss.version}</version>
@@ -473,6 +480,12 @@
                         <artifactId>kerb-simplekdc</artifactId>
                     </exclusion>
                 </exclusions>
+            </dependency>
+
+            <dependency>
+                <groupId>commons-beanutils</groupId>
+                <artifactId>commons-beanutils</artifactId>
+                <version>${commons-beanutils.version}</version>
             </dependency>
 
             <dependency>
@@ -701,6 +714,12 @@
             <dependency>
                 <groupId>io.netty</groupId>
                 <artifactId>netty-handler</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-codec-http2</artifactId>
                 <version>${netty.version}</version>
             </dependency>
 

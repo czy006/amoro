@@ -91,8 +91,8 @@ public class TestOverviewManager extends AMSTableTestBase {
             .asUnkeyedTable();
     appendData(table, 1);
     appendData(table, 2);
-    DefaultTableRuntime runtime = tableService().getRuntime(serverTableIdentifier().getId());
-    runtime.getOptimizingState().refresh(tableService().loadTable(serverTableIdentifier()));
+    DefaultTableRuntime runtime = getDefaultTableRuntime(serverTableIdentifier().getId());
+    runtime.refresh(tableService().loadTable(serverTableIdentifier()));
   }
 
   private void appendData(UnkeyedTable table, int id) {
@@ -109,7 +109,7 @@ public class TestOverviewManager extends AMSTableTestBase {
   void refreshPending() {
     TableRuntimeRefreshExecutor refresher =
         new TableRuntimeRefreshExecutor(tableService(), 1, Integer.MAX_VALUE, Integer.MAX_VALUE);
-    refresher.execute(tableService().getRuntime(serverTableIdentifier().getId()));
+    refresher.execute(getDefaultTableRuntime(serverTableIdentifier().getId()));
     refresher.dispose();
   }
 

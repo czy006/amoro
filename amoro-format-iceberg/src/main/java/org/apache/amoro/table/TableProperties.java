@@ -21,6 +21,10 @@ package org.apache.amoro.table;
 import static org.apache.iceberg.TableProperties.DEFAULT_NAME_MAPPING;
 import static org.apache.iceberg.TableProperties.FORMAT_VERSION;
 
+import org.apache.amoro.properties.CatalogMetaProperties;
+import org.apache.amoro.properties.HiveTableProperties;
+import org.apache.amoro.shade.guava32.com.google.common.collect.Sets;
+
 import java.util.HashSet;
 import java.util.Set;
 
@@ -41,6 +45,9 @@ public class TableProperties {
 
   public static final String TABLE_CREATE_TIME = "table.create-timestamp";
   public static final long TABLE_CREATE_TIME_DEFAULT = 0L;
+
+  /** table comment related properties */
+  public static final String COMMENT = "comment";
 
   /** table watermark related properties */
   public static final String TABLE_EVENT_TIME_FIELD = "table.event-time-field";
@@ -69,11 +76,15 @@ public class TableProperties {
 
   public static final boolean ENABLE_SELF_OPTIMIZING_DEFAULT = true;
 
+  public static final String SELF_OPTIMIZING_ALLOW_PARTIAL_COMMIT =
+      "self-optimizing.allow-partial-commit";
+  public static final boolean SELF_OPTIMIZING_ALLOW_PARTIAL_COMMIT_DEFAULT = false;
+
   public static final String SELF_OPTIMIZING_GROUP = "self-optimizing.group";
   public static final String SELF_OPTIMIZING_GROUP_DEFAULT = "default";
 
   public static final String SELF_OPTIMIZING_QUOTA = "self-optimizing.quota";
-  public static final double SELF_OPTIMIZING_QUOTA_DEFAULT = 0.1;
+  public static final double SELF_OPTIMIZING_QUOTA_DEFAULT = 0.5;
 
   public static final String SELF_OPTIMIZING_EXECUTE_RETRY_NUMBER =
       "self-optimizing.execute.num-retries";
@@ -122,29 +133,6 @@ public class TableProperties {
       "self-optimizing.min-plan-interval";
   public static final long SELF_OPTIMIZING_MIN_PLAN_INTERVAL_DEFAULT = 60000;
 
-  /** deprecated table optimize related properties */
-  @Deprecated public static final String ENABLE_OPTIMIZE = "optimize.enable";
-
-  @Deprecated public static final String OPTIMIZE_GROUP = "optimize.group";
-
-  @Deprecated public static final String OPTIMIZE_RETRY_NUMBER = "optimize.num-retries";
-
-  @Deprecated public static final String OPTIMIZE_MAX_FILE_COUNT = "optimize.max-file-count";
-
-  @Deprecated
-  public static final String FULL_OPTIMIZE_TRIGGER_MAX_INTERVAL =
-      "optimize.full.trigger.max-interval";
-
-  @Deprecated
-  public static final String MINOR_OPTIMIZE_TRIGGER_MAX_INTERVAL =
-      "optimize.minor.trigger.max-interval";
-
-  @Deprecated
-  public static final String MINOR_OPTIMIZE_TRIGGER_DELETE_FILE_COUNT =
-      "optimize.minor.trigger.delete-file-count";
-
-  @Deprecated public static final String OPTIMIZE_QUOTA = "optimize.quota";
-
   /** table clean related properties */
   public static final String ENABLE_TABLE_EXPIRE = "table-expire.enabled";
 
@@ -153,22 +141,25 @@ public class TableProperties {
   public static final String CHANGE_DATA_TTL = "change.data.ttl.minutes";
   public static final long CHANGE_DATA_TTL_DEFAULT = 10080; // 7 Days
 
-  /**
-   * @deprecated Use {@link TableProperties#SNAPSHOT_KEEP_DURATION } instead; will be removed in
-   *     0.9.0
-   */
-  @Deprecated public static final String BASE_SNAPSHOT_KEEP_MINUTES = "snapshot.base.keep.minutes";
-  /**
-   * @deprecated Use {@link TableProperties#SNAPSHOT_KEEP_DURATION_DEFAULT } instead; will be
-   *     removed in 0.9.0
-   */
-  @Deprecated public static final long BASE_SNAPSHOT_KEEP_MINUTES_DEFAULT = 720; // 12 Hours
-
   public static final String SNAPSHOT_KEEP_DURATION = "snapshot.keep.duration";
   public static final String SNAPSHOT_KEEP_DURATION_DEFAULT = "720min"; // 12 Hours
 
   public static final String SNAPSHOT_MIN_COUNT = "snapshot.keep.min-count";
   public static final int SNAPSHOT_MIN_COUNT_DEFAULT = 1;
+
+  /**
+   * The retention period for snapshots created by Flink checkpoints. Snapshots older than this
+   * duration may be cleaned up. Avoid keeping the last flink checkpoint snapshot for too long, as
+   * it may reference old data files.
+   *
+   * <p>Format: A string representing the duration, e.g., "7d" for 7 days, "12h" for 12 hours.
+   *
+   * <p>Default: "7d" (7 days)
+   */
+  public static final String SNAPSHOT_FLINK_CHECKPOINT_RETENTION =
+      "snapshot.keep.flink.checkpoint-retention";
+
+  public static final String SNAPSHOT_FLINK_CHECKPOINT_RETENTION_DEFAULT = "7d"; // 7 Days
 
   public static final String ENABLE_ORPHAN_CLEAN = "clean-orphan-file.enabled";
   public static final boolean ENABLE_ORPHAN_CLEAN_DEFAULT = false;
@@ -217,9 +208,6 @@ public class TableProperties {
           "|.*v[0-9]+\\.metadata\\.json"
           + // v123.metadata.json
           "|.*[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}-m[0-9]+\\.avro"; // UUID-m0.avro
-
-  @Deprecated public static final String ENABLE_TABLE_EXPIRE_LEGACY = "table-expire.enable";
-  @Deprecated public static final String ENABLE_ORPHAN_CLEAN_LEGACY = "clean-orphan-file.enable";
 
   /** table tag management related properties */
   public static final String ENABLE_AUTO_CREATE_TAG = "tag.auto-create.enabled";
@@ -330,8 +318,6 @@ public class TableProperties {
 
   public static final String OWNER = "owner";
 
-  @Deprecated public static final String ENABLE_LOG_STORE_LEGACY = "log-store.enable";
-
   /** table format related properties */
   public static final String TABLE_FORMAT = "table-format";
 
@@ -371,4 +357,25 @@ public class TableProperties {
     WRITE_PROTECTED_PROPERTIES.add(WATERMARK_BASE_STORE);
     WRITE_PROTECTED_PROPERTIES.add("flink.max-continuous-empty-commits");
   }
+
+  public static final HashSet<String> DEFAULT_NON_PERSISTED_TABLE_PROPERTIES =
+      Sets.newHashSet(
+          CatalogMetaProperties.OPTIMIZE_PROPERTIES_PREFIX,
+          CatalogMetaProperties.DEPRECATED_OPTIMIZE_PROPERTIES_PREFIX,
+          CatalogMetaProperties.TABLE_EXPIRE_PREFIX,
+          CatalogMetaProperties.ORPHAN_CLEAN_PREFIX,
+          CatalogMetaProperties.DANGLING_DELETE_FILES_CLEAN_PREFIX,
+          CatalogMetaProperties.DATA_EXPIRATION_PREFIX,
+          CatalogMetaProperties.TABLE_TRASH_PREFIX,
+          CatalogMetaProperties.AUTO_CREATE_TAG_PREFIX,
+          // mixed format reading config keys
+          TableProperties.SPLIT_OPEN_FILE_COST,
+          TableProperties.SPLIT_LOOKBACK,
+          TableProperties.SPLIT_SIZE,
+          // mixed format writing config keys
+          TableProperties.UPSERT_ENABLED,
+          // mixed-hive config keys
+          HiveTableProperties.AUTO_SYNC_HIVE_SCHEMA_CHANGE,
+          HiveTableProperties.AUTO_SYNC_HIVE_DATA_WRITE,
+          HiveTableProperties.HIVE_CONSISTENT_WRITE_ENABLED);
 }

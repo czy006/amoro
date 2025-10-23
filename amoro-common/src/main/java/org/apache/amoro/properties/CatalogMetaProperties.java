@@ -47,8 +47,6 @@ public class CatalogMetaProperties {
   public static final String AUTH_CONFIGS_VALUE_TYPE_AK_SK = "ak/sk";
   public static final String AUTH_CONFIGS_VALUE_TYPE_CUSTOM = "custom";
 
-  // Deprecated from version v0.4.0, use KEY_WAREHOUSE
-  @Deprecated public static final String KEY_WAREHOUSE_DIR = "warehouse.dir";
   public static final String KEY_WAREHOUSE = "warehouse";
 
   public static final String KEY_DATABASE_FILTER = "database-filter";
@@ -59,6 +57,7 @@ public class CatalogMetaProperties {
   public static final String CATALOG_TYPE_HIVE = "hive";
   public static final String CATALOG_TYPE_AMS = "ams";
   public static final String CATALOG_TYPE_GLUE = "glue";
+  public static final String CATALOG_TYPE_REST = "rest";
   public static final String CATALOG_TYPE_CUSTOM = "custom";
 
   public static final String TABLE_FORMATS = "table-formats";
@@ -71,7 +70,6 @@ public class CatalogMetaProperties {
   public static final long CLIENT_POOL_CACHE_EVICTION_INTERVAL_MS_DEFAULT =
       TimeUnit.MINUTES.toMillis(5);
 
-  // only used for unified catalog
   public static final String AMS_URI = "ams.uri";
 
   // only used for engine properties
@@ -86,9 +84,27 @@ public class CatalogMetaProperties {
   public static final String TABLE_PROPERTIES_PREFIX = "table.";
   public static final String LOG_STORE_PROPERTIES_PREFIX = "log-store.";
   public static final String OPTIMIZE_PROPERTIES_PREFIX = "self-optimizing.";
+  public static final String DEPRECATED_OPTIMIZE_PROPERTIES_PREFIX = "optimize.";
+  public static final String TABLE_EXPIRE_PREFIX = "table-expire.";
+  public static final String ORPHAN_CLEAN_PREFIX = "clean-orphan-file.";
+  public static final String DANGLING_DELETE_FILES_CLEAN_PREFIX = "clean-dangling-delete-files.";
+  public static final String DATA_EXPIRATION_PREFIX = "data-expire.";
+  public static final String TABLE_TRASH_PREFIX = "table-trash.";
+  public static final String AUTO_CREATE_TAG_PREFIX = "tag.auto-create.";
 
   // mixed-format properties
   public static final String MIXED_FORMAT_TABLE_STORE_SEPARATOR =
       "mixed-format.table-store.separator";
   public static final String MIXED_FORMAT_TABLE_STORE_SEPARATOR_DEFAULT = "_";
+
+  // a (semicolon-separated) list of property names(or prefix) that would not write into underlying
+  // tables in addition
+  // to default names(or prefix)
+  public static final String TABLE_NON_PERSISTED_PROPERTIES_ADDITIONAL =
+      "table-properties.non-persisted.additional";
+
+  //  a (semicolon-separated) list of property names(or prefix) excluded from
+  //  default 'merge on loading' properties
+  public static final String TABLE_NON_PERSISTED_PROPERTIES_EXCLUDED =
+      "table-properties.non-persisted.excluded";
 }

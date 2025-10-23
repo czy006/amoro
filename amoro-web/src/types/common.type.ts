@@ -70,6 +70,10 @@ export interface IBaseDetailInfo {
   tableFormat: string
   hasPartition: boolean
   healthScore: number
+  smallFileScore: number
+  equalityDeleteScore: number
+  positionalDeleteScore: number
+  comment: string
 }
 
 export interface ResourceUsageItem {

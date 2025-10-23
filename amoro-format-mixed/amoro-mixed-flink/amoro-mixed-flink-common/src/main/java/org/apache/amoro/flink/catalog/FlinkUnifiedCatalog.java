@@ -31,12 +31,16 @@ import org.apache.amoro.client.AmsThriftUrl;
 import org.apache.amoro.flink.catalog.factories.CatalogFactoryOptions;
 import org.apache.amoro.flink.catalog.factories.FlinkUnifiedCatalogFactory;
 import org.apache.amoro.flink.catalog.factories.iceberg.IcebergFlinkCatalogFactory;
-import org.apache.amoro.flink.catalog.factories.mixed.MixedCatalogFactory;
+import org.apache.amoro.flink.catalog.factories.mixed.MixedHiveCatalogFactory;
+import org.apache.amoro.flink.catalog.factories.mixed.MixedIcebergCatalogFactory;
 import org.apache.amoro.flink.catalog.factories.paimon.PaimonFlinkCatalogFactory;
 import org.apache.amoro.flink.table.UnifiedDynamicTableFactory;
 import org.apache.amoro.shade.guava32.com.google.common.base.Preconditions;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Maps;
 import org.apache.amoro.table.TableIdentifier;
+import org.apache.amoro.table.TableMetaStore;
+import org.apache.amoro.utils.CatalogUtil;
+import org.apache.amoro.utils.MixedFormatCatalogUtil;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.catalog.AbstractCatalog;
 import org.apache.flink.table.catalog.CatalogBaseTable;
@@ -66,7 +70,9 @@ import org.apache.flink.table.factories.Factory;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /** This is a Flink catalog wrap a unified catalog. */
 public class FlinkUnifiedCatalog extends AbstractCatalog {
@@ -169,22 +175,43 @@ public class FlinkUnifiedCatalog extends AbstractCatalog {
   @Override
   public CatalogBaseTable getTable(ObjectPath tablePath)
       throws TableNotExistException, CatalogException {
-    AmoroTable<?> amoroTable;
-    try {
-      amoroTable = unifiedCatalog.loadTable(tablePath.getDatabaseName(), tablePath.getObjectName());
-    } catch (NoSuchTableException e) {
-      throw new TableNotExistException(getName(), tablePath, e);
-    }
-    AbstractCatalog catalog = originalCatalog(amoroTable);
-    CatalogTable catalogTable = (CatalogTable) catalog.getTable(tablePath);
-    final Map<String, String> flinkProperties = Maps.newHashMap(catalogTable.getOptions());
-    flinkProperties.put(TABLE_FORMAT.key(), amoroTable.format().toString());
+    TableIdentifier tableIdentifier =
+        TableIdentifier.of(
+            this.amoroCatalogName, tablePath.getDatabaseName(), tablePath.getObjectName());
+    Set<TableFormat> formats =
+        CatalogUtil.tableFormats(unifiedCatalog.metastoreType(), unifiedCatalog.properties());
 
-    return CatalogTable.of(
-        catalogTable.getUnresolvedSchema(),
-        catalogTable.getComment(),
-        catalogTable.getPartitionKeys(),
-        flinkProperties);
+    TableMetaStore tableMetaStore = unifiedCatalog.authenticationContext();
+    return formats.stream()
+        .map(
+            f -> {
+              try {
+                AbstractCatalog catalog =
+                    getOriginalCatalog(f)
+                        .orElseGet(() -> createOriginalCatalog(tableIdentifier, f));
+                CatalogTable catalogTable =
+                    (CatalogTable) tableMetaStore.doAs(() -> catalog.getTable(tablePath));
+                final Map<String, String> flinkProperties =
+                    Maps.newHashMap(catalogTable.getOptions());
+                flinkProperties.put(TABLE_FORMAT.key(), f.toString());
+                return CatalogTable.of(
+                    catalogTable.getUnresolvedSchema(),
+                    catalogTable.getComment(),
+                    catalogTable.getPartitionKeys(),
+                    flinkProperties);
+              } catch (RuntimeException e) {
+                // only handle no such table case
+                if (e.getCause() instanceof TableNotExistException
+                    || e.getCause() instanceof NoSuchTableException) {
+                  return null;
+                } else {
+                  throw e;
+                }
+              }
+            })
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElseThrow(() -> new TableNotExistException(getName(), tablePath));
   }
 
   @Override
@@ -220,6 +247,12 @@ public class FlinkUnifiedCatalog extends AbstractCatalog {
       throws TableAlreadyExistException, DatabaseNotExistException, CatalogException {
     Configuration configuration = new Configuration();
     table.getOptions().forEach(configuration::setString);
+    unifiedCatalog.refresh();
+    table
+        .getOptions()
+        .putAll(
+            MixedFormatCatalogUtil.mergePersistedCatalogPropertiesToTable(
+                table.getOptions(), unifiedCatalog.properties()));
     TableFormat format = TableFormat.valueOf(configuration.get(TABLE_FORMAT));
     TableIdentifier tableIdentifier =
         TableIdentifier.of(
@@ -461,8 +494,10 @@ public class FlinkUnifiedCatalog extends AbstractCatalog {
   private AbstractCatalog createOriginalCatalog(
       TableIdentifier tableIdentifier, TableFormat tableFormat) {
     CatalogFactory catalogFactory;
-    if (tableFormat.in(TableFormat.MIXED_HIVE, TableFormat.MIXED_ICEBERG)) {
-      catalogFactory = new MixedCatalogFactory();
+    if (tableFormat.equals(TableFormat.MIXED_ICEBERG)) {
+      catalogFactory = new MixedIcebergCatalogFactory();
+    } else if (tableFormat.equals(TableFormat.MIXED_HIVE)) {
+      catalogFactory = new MixedHiveCatalogFactory();
     } else if (tableFormat.equals(TableFormat.ICEBERG)) {
       catalogFactory = new IcebergFlinkCatalogFactory(hadoopConf);
     } else if (tableFormat.equals(TableFormat.PAIMON)) {

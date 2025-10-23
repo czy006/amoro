@@ -31,6 +31,7 @@ import static org.apache.amoro.server.optimizing.OptimizerGroupMetrics.OPTIMIZER
 import static org.apache.amoro.server.optimizing.OptimizerGroupMetrics.OPTIMIZER_GROUP_THREADS;
 
 import org.apache.amoro.BasicTableTestHelper;
+import org.apache.amoro.ServerTableIdentifier;
 import org.apache.amoro.TableFormat;
 import org.apache.amoro.TableTestHelper;
 import org.apache.amoro.api.OptimizerRegisterInfo;
@@ -41,19 +42,17 @@ import org.apache.amoro.catalog.CatalogTestHelper;
 import org.apache.amoro.io.MixedDataTestHelpers;
 import org.apache.amoro.metrics.Gauge;
 import org.apache.amoro.metrics.MetricKey;
+import org.apache.amoro.metrics.MetricRegistry;
 import org.apache.amoro.optimizing.RewriteFilesOutput;
 import org.apache.amoro.optimizing.TableOptimizing;
 import org.apache.amoro.process.ProcessStatus;
 import org.apache.amoro.resource.ResourceGroup;
 import org.apache.amoro.server.manager.MetricManager;
-import org.apache.amoro.server.metrics.MetricRegistry;
-import org.apache.amoro.server.persistence.TableRuntimeMeta;
 import org.apache.amoro.server.resource.OptimizerInstance;
 import org.apache.amoro.server.resource.OptimizerThread;
 import org.apache.amoro.server.resource.QuotaProvider;
 import org.apache.amoro.server.table.AMSTableTestBase;
 import org.apache.amoro.server.table.DefaultTableRuntime;
-import org.apache.amoro.server.table.TableConfigurations;
 import org.apache.amoro.shade.guava32.com.google.common.collect.ImmutableMap;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Lists;
 import org.apache.amoro.table.MixedTable;
@@ -62,6 +61,7 @@ import org.apache.amoro.table.UnkeyedTable;
 import org.apache.amoro.utils.SerializationUtil;
 import org.apache.iceberg.AppendFiles;
 import org.apache.iceberg.DataFile;
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.data.Record;
 import org.junit.Assert;
 import org.junit.Test;
@@ -131,7 +131,7 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     DefaultTableRuntime tableRuntimeMeta =
         buildTableRuntimeMeta(OptimizingStatus.PENDING, defaultResourceGroup());
     OptimizingQueue queue = buildOptimizingGroupService(tableRuntimeMeta);
-    Assert.assertNull(queue.pollTask(0));
+    Assert.assertNull(queue.pollTask(optimizerThread, 0));
     queue.dispose();
   }
 
@@ -160,12 +160,131 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     OptimizingQueue queue = buildOptimizingGroupService(tableRuntime);
 
     // 1.poll task
-    TaskRuntime task = queue.pollTask(MAX_POLLING_TIME);
+    TaskRuntime<?> task = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
 
     Assert.assertNotNull(task);
-    Assert.assertEquals(TaskRuntime.Status.PLANNED, task.getStatus());
-    Assert.assertNull(queue.pollTask(0));
+    Assert.assertEquals(TaskRuntime.Status.SCHEDULED, task.getStatus());
+    Assert.assertNull(queue.pollTask(optimizerThread, 0));
     queue.dispose();
+  }
+
+  @Test
+  public void testPollTaskWithOverQuotaDisabled() {
+    DefaultTableRuntime tableRuntime = initTableWithPartitionedFiles();
+    OptimizingQueue queue =
+        new OptimizingQueue(
+            CATALOG_MANAGER,
+            testResourceGroup(),
+            resourceGroup -> 2,
+            planExecutor,
+            Collections.singletonList(tableRuntime),
+            1);
+
+    TaskRuntime<?> task = queue.pollTask(optimizerThread, MAX_POLLING_TIME, false);
+    Assert.assertNotNull(task);
+    Assert.assertEquals(TaskRuntime.Status.SCHEDULED, task.getStatus());
+    queue.ackTask(task.getTaskId(), optimizerThread);
+    Assert.assertEquals(
+        1, queue.collectTasks(t -> t.getStatus() == TaskRuntime.Status.ACKED).size());
+    Assert.assertNotNull(task);
+
+    TaskRuntime<?> task2 = queue.pollTask(optimizerThread, MAX_POLLING_TIME, false);
+    Assert.assertNull(task2);
+
+    queue.completeTask(
+        optimizerThread,
+        buildOptimizingTaskResult(task.getTaskId(), optimizerThread.getThreadId()));
+    Assert.assertEquals(TaskRuntime.Status.SUCCESS, task.getStatus());
+
+    TaskRuntime<?> retryTask = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+    Assert.assertNotNull(retryTask);
+
+    queue.dispose();
+  }
+
+  @Test
+  public void testPollTaskWithOverQuotaEnabled() {
+    DefaultTableRuntime tableRuntime = initTableWithPartitionedFiles();
+    OptimizingQueue queue =
+        new OptimizingQueue(
+            CATALOG_MANAGER,
+            testResourceGroup(),
+            resourceGroup -> 2,
+            planExecutor,
+            Collections.singletonList(tableRuntime),
+            1);
+
+    TaskRuntime<?> task = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+    Assert.assertNotNull(task);
+    Assert.assertEquals(TaskRuntime.Status.SCHEDULED, task.getStatus());
+    queue.ackTask(task.getTaskId(), optimizerThread);
+    Assert.assertEquals(
+        1, queue.collectTasks(t -> t.getStatus() == TaskRuntime.Status.ACKED).size());
+    Assert.assertNotNull(task);
+
+    TaskRuntime<?> task2 = queue.pollTask(optimizerThread, MAX_POLLING_TIME, true);
+    Assert.assertNotNull(task2);
+
+    queue.completeTask(
+        optimizerThread,
+        buildOptimizingTaskResult(task.getTaskId(), optimizerThread.getThreadId()));
+    Assert.assertEquals(TaskRuntime.Status.SUCCESS, task.getStatus());
+    TaskRuntime<?> task4 = queue.pollTask(optimizerThread, MAX_POLLING_TIME, false);
+    Assert.assertNull(task4);
+    TaskRuntime<?> retryTask = queue.pollTask(optimizerThread, MAX_POLLING_TIME, true);
+    Assert.assertNotNull(retryTask);
+    queue.dispose();
+  }
+
+  @Test
+  public void testQuotaSchedulePolicy() throws InterruptedException {
+    DefaultTableRuntime tableRuntime = initTableWithFiles();
+
+    OptimizingQueue queue =
+        new OptimizingQueue(
+            CATALOG_MANAGER,
+            testResourceGroup(),
+            resourceGroup -> 2,
+            planExecutor,
+            Collections.singletonList(tableRuntime),
+            1);
+    TaskRuntime<?> task = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+    queue.ackTask(task.getTaskId(), optimizerThread);
+    Assert.assertEquals(
+        1, queue.collectTasks(t -> t.getStatus() == TaskRuntime.Status.ACKED).size());
+    Assert.assertNotNull(task);
+    Assert.assertTrue(tableRuntime.getTableIdentifier().getId() == task.getTableId());
+    queue.completeTask(
+        optimizerThread,
+        buildOptimizingTaskResult(task.getTaskId(), optimizerThread.getThreadId()));
+    Assert.assertEquals(TaskRuntime.Status.SUCCESS, task.getStatus());
+    OptimizingProcess optimizingProcess = tableRuntime.getOptimizingProcess();
+    Assert.assertEquals(ProcessStatus.RUNNING, optimizingProcess.getStatus());
+    optimizingProcess.commit();
+    Assert.assertEquals(ProcessStatus.SUCCESS, optimizingProcess.getStatus());
+    Assert.assertNull(tableRuntime.getOptimizingProcess());
+
+    // waiting for min-plan-interval and minor-trigger-interval
+    Thread.sleep(500);
+    tableRuntime = initTableWithPartitionedFiles();
+    ServerTableIdentifier serverTableIdentifier =
+        ServerTableIdentifier.of(
+            org.apache.amoro.table.TableIdentifier.of(
+                serverTableIdentifier().getCatalog(), "db", "new_table"),
+            TableFormat.ICEBERG);
+    serverTableIdentifier.setId(100L);
+    DefaultTableRuntime tableRuntime2 = createTable(serverTableIdentifier);
+    queue.refreshTable(tableRuntime2);
+    queue.refreshTable(tableRuntime);
+
+    TaskRuntime<?> task2 = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+    Assert.assertNotNull(task2);
+    Assert.assertTrue(tableRuntime2.getTableIdentifier().getId() == task2.getTableId());
+    TaskRuntime<?> task3 = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+    Assert.assertNotNull(task3);
+    Assert.assertTrue(tableRuntime.getTableIdentifier().getId() == task3.getTableId());
+    queue.dispose();
+    tableRuntime2.dispose();
   }
 
   @Test
@@ -174,27 +293,25 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     OptimizingQueue queue = buildOptimizingGroupService(tableRuntimeMeta);
 
     // 1.poll task
-    TaskRuntime<?> task = queue.pollTask(MAX_POLLING_TIME);
+    TaskRuntime<?> task = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
     Assert.assertNotNull(task);
 
     for (int i = 0; i < TableProperties.SELF_OPTIMIZING_EXECUTE_RETRY_NUMBER_DEFAULT; i++) {
       queue.retryTask(task);
-      TaskRuntime<?> retryTask = queue.pollTask(MAX_POLLING_TIME);
+      TaskRuntime<?> retryTask = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
       Assert.assertEquals(retryTask.getTaskId(), task.getTaskId());
-      retryTask.schedule(optimizerThread);
-      retryTask.ack(optimizerThread);
-      retryTask.complete(
+      queue.ackTask(task.getTaskId(), optimizerThread);
+      queue.completeTask(
           optimizerThread,
           buildOptimizingTaskFailed(task.getTaskId(), optimizerThread.getThreadId()));
       Assert.assertEquals(TaskRuntime.Status.PLANNED, task.getStatus());
     }
 
     queue.retryTask(task);
-    TaskRuntime<?> retryTask = queue.pollTask(MAX_POLLING_TIME);
+    TaskRuntime<?> retryTask = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
     Assert.assertEquals(retryTask.getTaskId(), task.getTaskId());
-    retryTask.schedule(optimizerThread);
-    retryTask.ack(optimizerThread);
-    retryTask.complete(
+    queue.ackTask(task.getTaskId(), optimizerThread);
+    queue.completeTask(
         optimizerThread,
         buildOptimizingTaskFailed(task.getTaskId(), optimizerThread.getThreadId()));
     Assert.assertEquals(TaskRuntime.Status.FAILED, task.getStatus());
@@ -207,23 +324,22 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     OptimizingQueue queue = buildOptimizingGroupService(tableRuntime);
     Assert.assertEquals(0, queue.collectTasks().size());
 
-    TaskRuntime task = queue.pollTask(MAX_POLLING_TIME);
-    task.schedule(optimizerThread);
-    task.ack(optimizerThread);
+    TaskRuntime<?> task = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+    queue.ackTask(task.getTaskId(), optimizerThread);
     Assert.assertEquals(
         1, queue.collectTasks(t -> t.getStatus() == TaskRuntime.Status.ACKED).size());
     Assert.assertNotNull(task);
-    task.complete(
+    queue.completeTask(
         optimizerThread,
         buildOptimizingTaskResult(task.getTaskId(), optimizerThread.getThreadId()));
     Assert.assertEquals(TaskRuntime.Status.SUCCESS, task.getStatus());
 
     // 7.commit
-    OptimizingProcess optimizingProcess = tableRuntime.getOptimizingState().getOptimizingProcess();
+    OptimizingProcess optimizingProcess = tableRuntime.getOptimizingProcess();
     Assert.assertEquals(ProcessStatus.RUNNING, optimizingProcess.getStatus());
     optimizingProcess.commit();
     Assert.assertEquals(ProcessStatus.SUCCESS, optimizingProcess.getStatus());
-    Assert.assertNull(tableRuntime.getOptimizingState().getOptimizingProcess());
+    Assert.assertNull(tableRuntime.getOptimizingProcess());
 
     // 8.commit again, throw exceptions, and status not changed.
     Assert.assertThrows(IllegalStateException.class, optimizingProcess::commit);
@@ -234,14 +350,61 @@ public class TestOptimizingQueue extends AMSTableTestBase {
   }
 
   @Test
+  public void testCommitTaskWithFailed() {
+    DefaultTableRuntime tableRuntime = initTableWithPartitionedFiles();
+    OptimizingQueue queue = buildOptimizingGroupService(tableRuntime);
+    Assert.assertEquals(0, queue.collectTasks().size());
+
+    TaskRuntime<?> firstTask = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+    queue.ackTask(firstTask.getTaskId(), optimizerThread);
+    Assert.assertEquals(
+        1, queue.collectTasks(t -> t.getStatus() == TaskRuntime.Status.ACKED).size());
+    Assert.assertNotNull(firstTask);
+    queue.completeTask(
+        optimizerThread,
+        buildOptimizingTaskResult(firstTask.getTaskId(), optimizerThread.getThreadId()));
+    Assert.assertEquals(TaskRuntime.Status.SUCCESS, firstTask.getStatus());
+
+    queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+    TaskRuntime<?> task = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+    Assert.assertNotNull(task);
+
+    for (int i = 0; i < TableProperties.SELF_OPTIMIZING_EXECUTE_RETRY_NUMBER_DEFAULT; i++) {
+      queue.retryTask(task);
+      TaskRuntime<?> retryTask = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+      Assert.assertEquals(retryTask.getTaskId(), task.getTaskId());
+      queue.ackTask(task.getTaskId(), optimizerThread);
+      queue.completeTask(
+          optimizerThread,
+          buildOptimizingTaskFailed(task.getTaskId(), optimizerThread.getThreadId()));
+      Assert.assertEquals(TaskRuntime.Status.PLANNED, task.getStatus());
+    }
+
+    queue.retryTask(task);
+    TaskRuntime<?> retryTask = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
+    Assert.assertEquals(retryTask.getTaskId(), task.getTaskId());
+    queue.ackTask(retryTask.getTaskId(), optimizerThread);
+
+    OptimizingProcess optimizingProcess = tableRuntime.getOptimizingProcess();
+    queue.completeTask(
+        optimizerThread,
+        buildOptimizingTaskFailed(task.getTaskId(), optimizerThread.getThreadId()));
+    Assert.assertEquals(TaskRuntime.Status.FAILED, task.getStatus());
+    optimizingProcess.commit();
+    Assert.assertEquals(ProcessStatus.FAILED, optimizingProcess.getStatus());
+    Assert.assertNull(tableRuntime.getOptimizingProcess());
+    Assert.assertEquals(0, queue.collectTasks().size());
+    queue.dispose();
+  }
+
+  @Test
   public void testCollectingTasks() {
     DefaultTableRuntime tableRuntime = initTableWithFiles();
     OptimizingQueue queue = buildOptimizingGroupService(tableRuntime);
     Assert.assertEquals(0, queue.collectTasks().size());
 
-    TaskRuntime task = queue.pollTask(MAX_POLLING_TIME);
+    TaskRuntime<?> task = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
     Assert.assertNotNull(task);
-    task.schedule(optimizerThread);
     Assert.assertEquals(1, queue.collectTasks().size());
     Assert.assertEquals(
         1, queue.collectTasks(t -> t.getStatus() == TaskRuntime.Status.SCHEDULED).size());
@@ -285,9 +448,8 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     Assert.assertEquals(0, idleTablesGauge.getValue().longValue());
     Assert.assertEquals(0, committingTablesGauge.getValue().longValue());
 
-    TaskRuntime task = queue.pollTask(MAX_POLLING_TIME);
+    TaskRuntime<?> task = queue.pollTask(optimizerThread, MAX_POLLING_TIME);
     Assert.assertNotNull(task);
-    task.schedule(optimizerThread);
     Assert.assertEquals(1, queueTasksGauge.getValue().longValue());
     Assert.assertEquals(0, executingTasksGauge.getValue().longValue());
     Assert.assertEquals(0, planingTablesGauge.getValue().longValue());
@@ -296,7 +458,7 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     Assert.assertEquals(0, idleTablesGauge.getValue().longValue());
     Assert.assertEquals(0, committingTablesGauge.getValue().longValue());
 
-    task.ack(optimizerThread);
+    queue.ackTask(task.getTaskId(), optimizerThread);
     Assert.assertEquals(0, queueTasksGauge.getValue().longValue());
     Assert.assertEquals(1, executingTasksGauge.getValue().longValue());
     Assert.assertEquals(0, planingTablesGauge.getValue().longValue());
@@ -305,7 +467,7 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     Assert.assertEquals(0, idleTablesGauge.getValue().longValue());
     Assert.assertEquals(0, committingTablesGauge.getValue().longValue());
 
-    task.complete(
+    queue.completeTask(
         optimizerThread,
         buildOptimizingTaskResult(task.getTaskId(), optimizerThread.getThreadId()));
     Assert.assertEquals(0, queueTasksGauge.getValue().longValue());
@@ -316,7 +478,7 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     Assert.assertEquals(0, idleTablesGauge.getValue().longValue());
     Assert.assertEquals(1, committingTablesGauge.getValue().longValue());
 
-    OptimizingProcess optimizingProcess = tableRuntime.getOptimizingState().getOptimizingProcess();
+    OptimizingProcess optimizingProcess = tableRuntime.getOptimizingProcess();
     optimizingProcess.commit();
     Assert.assertEquals(0, queueTasksGauge.getValue().longValue());
     Assert.assertEquals(0, executingTasksGauge.getValue().longValue());
@@ -367,29 +529,58 @@ public class TestOptimizingQueue extends AMSTableTestBase {
   protected DefaultTableRuntime initTableWithFiles() {
     MixedTable mixedTable =
         (MixedTable) tableService().loadTable(serverTableIdentifier()).originalTable();
+    mixedTable
+        .updateProperties()
+        .set(TableProperties.SELF_OPTIMIZING_MIN_PLAN_INTERVAL, "10")
+        .set(TableProperties.SELF_OPTIMIZING_MINOR_TRIGGER_INTERVAL, "10")
+        .commit();
     appendData(mixedTable.asUnkeyedTable(), 1);
     appendData(mixedTable.asUnkeyedTable(), 2);
     DefaultTableRuntime tableRuntime =
         buildTableRuntimeMeta(OptimizingStatus.PENDING, defaultResourceGroup());
 
-    tableRuntime.getOptimizingState().refresh(tableService().loadTable(serverTableIdentifier()));
+    tableRuntime.refresh(tableService().loadTable(serverTableIdentifier()));
+    return tableRuntime;
+  }
+
+  protected DefaultTableRuntime initTableWithPartitionedFiles() {
+    MixedTable mixedTable =
+        (MixedTable) tableService().loadTable(serverTableIdentifier()).originalTable();
+    appendPartitionedData(mixedTable.asUnkeyedTable(), 1);
+    appendPartitionedData(mixedTable.asUnkeyedTable(), 2);
+    DefaultTableRuntime tableRuntime =
+        buildTableRuntimeMeta(OptimizingStatus.PENDING, defaultResourceGroup());
+
+    tableRuntime.refresh(tableService().loadTable(serverTableIdentifier()));
     return tableRuntime;
   }
 
   private DefaultTableRuntime buildTableRuntimeMeta(
       OptimizingStatus status, ResourceGroup resourceGroup) {
-    MixedTable mixedTable =
-        (MixedTable) tableService().loadTable(serverTableIdentifier()).originalTable();
-    TableRuntimeMeta tableRuntimeMeta = new TableRuntimeMeta();
-    tableRuntimeMeta.setCatalogName(serverTableIdentifier().getCatalog());
-    tableRuntimeMeta.setDbName(serverTableIdentifier().getDatabase());
-    tableRuntimeMeta.setTableName(serverTableIdentifier().getTableName());
-    tableRuntimeMeta.setTableId(serverTableIdentifier().getId());
-    tableRuntimeMeta.setFormat(TableFormat.ICEBERG);
-    tableRuntimeMeta.setTableStatus(status);
-    tableRuntimeMeta.setTableConfig(TableConfigurations.parseTableConfig(mixedTable.properties()));
-    tableRuntimeMeta.setOptimizerGroup(resourceGroup.getName());
-    return new DefaultTableRuntime(tableRuntimeMeta, tableService());
+    DefaultTableRuntime tableRuntime =
+        (DefaultTableRuntime) tableService().getRuntime(serverTableIdentifier().getId());
+    tableRuntime
+        .store()
+        .begin()
+        .updateStatusCode(code -> status.getCode())
+        .updateGroup(any -> resourceGroup.getName())
+        .commit();
+    return tableRuntime;
+  }
+
+  private void appendPartitionedData(UnkeyedTable table, int id) {
+    ArrayList<Record> newRecords =
+        Lists.newArrayList(
+            MixedDataTestHelpers.createRecord(
+                table.schema(), id, "111", 0L, "2022-01-01T12:00:00"));
+    newRecords.add(
+        MixedDataTestHelpers.createRecord(table.schema(), id, "222", 0L, "2022-01-02T12:00:00"));
+    newRecords.add(
+        MixedDataTestHelpers.createRecord(table.schema(), id, "333", 0L, "2022-01-03T12:00:00"));
+    List<DataFile> dataFiles = MixedDataTestHelpers.writeBaseStore(table, 0L, newRecords, false);
+    AppendFiles appendFiles = table.newAppend();
+    dataFiles.forEach(appendFiles::appendFile);
+    appendFiles.commit();
   }
 
   private void appendData(UnkeyedTable table, int id) {
@@ -401,6 +592,40 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     AppendFiles appendFiles = table.newAppend();
     dataFiles.forEach(appendFiles::appendFile);
     appendFiles.commit();
+  }
+
+  private DefaultTableRuntime createTable(ServerTableIdentifier serverTableIdentifier) {
+    org.apache.iceberg.catalog.Catalog catalog =
+        catalogTestHelper().buildIcebergCatalog(catalogMeta());
+    catalog.createTable(
+        TableIdentifier.of(
+            serverTableIdentifier.getDatabase(), serverTableIdentifier.getTableName()),
+        tableTestHelper().tableSchema(),
+        tableTestHelper().partitionSpec(),
+        tableTestHelper().tableProperties());
+    exploreTableRuntimes();
+    serverTableIdentifier =
+        tableManager()
+            .getServerTableIdentifier(serverTableIdentifier.getIdentifier().buildTableIdentifier());
+
+    MixedTable mixedTable =
+        (MixedTable) tableService().loadTable(serverTableIdentifier).originalTable();
+    appendPartitionedData(mixedTable.asUnkeyedTable(), 1);
+    appendPartitionedData(mixedTable.asUnkeyedTable(), 2);
+
+    DefaultTableRuntime tableRuntime =
+        (DefaultTableRuntime) tableService().getRuntime(serverTableIdentifier.getId());
+
+    tableRuntime
+        .store()
+        .begin()
+        .updateGroup(any -> defaultResourceGroup().getName())
+        .updateStatusCode(any -> OptimizingStatus.PENDING.getCode())
+        .commit();
+
+    tableRuntime.refresh(tableService().loadTable(serverTableIdentifier));
+
+    return tableRuntime;
   }
 
   private OptimizingTaskResult buildOptimizingTaskResult(OptimizingTaskId taskId, int threadId) {

@@ -31,7 +31,6 @@ import org.apache.amoro.data.ChangeAction;
 import org.apache.amoro.server.optimizing.OptimizingProcess;
 import org.apache.amoro.server.optimizing.OptimizingStatus;
 import org.apache.amoro.server.scheduler.inline.ExecutorTestBase;
-import org.apache.amoro.server.table.DefaultOptimizingState;
 import org.apache.amoro.server.table.DefaultTableRuntime;
 import org.apache.amoro.server.table.TableConfigurations;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Iterables;
@@ -92,7 +91,7 @@ public class TestSnapshotExpire extends ExecutorTestBase {
   public void testExpireChangeTableFiles() {
     Assume.assumeTrue(isKeyedTable());
     KeyedTable testKeyedTable = getMixedTable().asKeyedTable();
-    testKeyedTable.updateProperties().set(TableProperties.BASE_SNAPSHOT_KEEP_MINUTES, "0").commit();
+    testKeyedTable.updateProperties().set(TableProperties.SNAPSHOT_KEEP_DURATION, "0").commit();
     testKeyedTable.updateProperties().set(TableProperties.CHANGE_DATA_TTL, "0").commit();
     List<DataFile> s1Files = insertChangeDataFiles(testKeyedTable, 1);
     long l = testKeyedTable.changeTable().currentSnapshot().timestampMillis();
@@ -116,7 +115,7 @@ public class TestSnapshotExpire extends ExecutorTestBase {
         file ->
             Assert.assertTrue(testKeyedTable.changeTable().io().exists(file.path().toString())));
 
-    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(testKeyedTable);
+    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(testKeyedTable, null);
     tableMaintainer.getChangeMaintainer().expireFiles(l + 1);
 
     // In order to advance the snapshot
@@ -168,20 +167,18 @@ public class TestSnapshotExpire extends ExecutorTestBase {
 
     testKeyedTable.updateProperties().set(TableProperties.CHANGE_DATA_TTL, "0").commit();
     DefaultTableRuntime tableRuntime = Mockito.mock(DefaultTableRuntime.class);
-    DefaultOptimizingState optimizingState = Mockito.mock(DefaultOptimizingState.class);
     Mockito.when(tableRuntime.getTableIdentifier())
         .thenReturn(ServerTableIdentifier.of(testKeyedTable.id(), getTestFormat()));
-    Mockito.when(tableRuntime.getOptimizingState()).thenReturn(optimizingState);
-    Mockito.when(optimizingState.getOptimizingStatus()).thenReturn(OptimizingStatus.IDLE);
-    Mockito.when(optimizingState.getTableConfiguration())
+    Mockito.when(tableRuntime.getOptimizingStatus()).thenReturn(OptimizingStatus.IDLE);
+    Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig((testKeyedTable.properties())));
     Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig((testKeyedTable.properties())));
 
     Assert.assertEquals(5, Iterables.size(testKeyedTable.changeTable().snapshots()));
 
-    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(testKeyedTable);
-    tableMaintainer.expireSnapshots(tableRuntime);
+    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(testKeyedTable, tableRuntime);
+    tableMaintainer.expireSnapshots();
 
     Assert.assertEquals(2, Iterables.size(testKeyedTable.changeTable().snapshots()));
     List<Snapshot> expectedSnapshots = new ArrayList<>();
@@ -212,21 +209,18 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     writeAndCommitBaseStore(table);
     Snapshot lastSnapshot = table.currentSnapshot();
 
-    table.updateProperties().set(TableProperties.BASE_SNAPSHOT_KEEP_MINUTES, "0").commit();
+    table.updateProperties().set(TableProperties.SNAPSHOT_KEEP_DURATION, "0").commit();
     DefaultTableRuntime tableRuntime = Mockito.mock(DefaultTableRuntime.class);
-    DefaultOptimizingState optimizingState = Mockito.mock(DefaultOptimizingState.class);
-    Mockito.when(tableRuntime.getOptimizingState()).thenReturn(optimizingState);
     Mockito.when(tableRuntime.getTableIdentifier())
         .thenReturn(ServerTableIdentifier.of(table.id(), getTestFormat()));
-    Mockito.when(tableRuntime.getOptimizingState().getOptimizingStatus())
-        .thenReturn(OptimizingStatus.IDLE);
+    Mockito.when(tableRuntime.getOptimizingStatus()).thenReturn(OptimizingStatus.IDLE);
     Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig(table.properties()));
 
     Assert.assertEquals(4, Iterables.size(table.snapshots()));
 
-    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(getMixedTable());
-    tableMaintainer.expireSnapshots(tableRuntime);
+    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(getMixedTable(), tableRuntime);
+    tableMaintainer.expireSnapshots();
 
     Assert.assertEquals(2, Iterables.size(table.snapshots()));
     List<Snapshot> expectedSnapshots = new ArrayList<>();
@@ -254,22 +248,20 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     writeAndCommitBaseStore(table);
     Snapshot lastSnapshot = table.currentSnapshot();
 
-    table.updateProperties().set(TableProperties.BASE_SNAPSHOT_KEEP_MINUTES, "0").commit();
+    table.updateProperties().set(TableProperties.SNAPSHOT_KEEP_DURATION, "0").commit();
     DefaultTableRuntime tableRuntime = Mockito.mock(DefaultTableRuntime.class);
-    DefaultOptimizingState optimizingState = Mockito.mock(DefaultOptimizingState.class);
-    Mockito.when(tableRuntime.getOptimizingState()).thenReturn(optimizingState);
     Mockito.when(tableRuntime.getTableIdentifier())
         .thenReturn(ServerTableIdentifier.of(table.id(), getTestFormat()));
-    Mockito.when(optimizingState.getOptimizingStatus()).thenReturn(OptimizingStatus.IDLE);
+    Mockito.when(tableRuntime.getOptimizingStatus()).thenReturn(OptimizingStatus.IDLE);
     Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig(table.properties()));
-    Mockito.when(optimizingState.getTableConfiguration())
+    Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig(table.properties()));
 
     Assert.assertEquals(4, Iterables.size(table.snapshots()));
 
-    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(getMixedTable());
-    tableMaintainer.expireSnapshots(tableRuntime);
+    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(getMixedTable(), tableRuntime);
+    tableMaintainer.expireSnapshots();
 
     Assert.assertEquals(2, Iterables.size(table.snapshots()));
     List<Snapshot> expectedSnapshots = new ArrayList<>();
@@ -287,19 +279,16 @@ public class TestSnapshotExpire extends ExecutorTestBase {
             : getMixedTable().asUnkeyedTable();
     table.newAppend().commit();
     table.newAppend().commit();
-    table.updateProperties().set(TableProperties.BASE_SNAPSHOT_KEEP_MINUTES, "0").commit();
+    table.updateProperties().set(TableProperties.SNAPSHOT_KEEP_DURATION, "0").commit();
 
     DefaultTableRuntime tableRuntime = Mockito.mock(DefaultTableRuntime.class);
-    DefaultOptimizingState optimizingState = Mockito.mock(DefaultOptimizingState.class);
-    Mockito.when(tableRuntime.getOptimizingState()).thenReturn(optimizingState);
     Mockito.when(tableRuntime.getTableIdentifier())
         .thenReturn(ServerTableIdentifier.of(table.id(), getTestFormat()));
-    Mockito.when(tableRuntime.getOptimizingState().getOptimizingStatus())
-        .thenReturn(OptimizingStatus.IDLE);
+    Mockito.when(tableRuntime.getOptimizingStatus()).thenReturn(OptimizingStatus.IDLE);
     Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig(table.properties()));
 
-    new MixedTableMaintainer(table).expireSnapshots(tableRuntime);
+    new MixedTableMaintainer(table, tableRuntime).expireSnapshots();
     Assert.assertEquals(1, Iterables.size(table.snapshots()));
 
     table.newAppend().commit();
@@ -308,10 +297,8 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     long optimizeSnapshotId = table.currentSnapshot().snapshotId();
     OptimizingProcess optimizingProcess = Mockito.mock(OptimizingProcess.class);
     Mockito.when(optimizingProcess.getTargetSnapshotId()).thenReturn(optimizeSnapshotId);
-    Mockito.when(tableRuntime.getOptimizingState().getOptimizingStatus())
-        .thenReturn(OptimizingStatus.COMMITTING);
-    Mockito.when(tableRuntime.getOptimizingState().getOptimizingProcess())
-        .thenReturn(optimizingProcess);
+    Mockito.when(tableRuntime.getOptimizingStatus()).thenReturn(OptimizingStatus.COMMITTING);
+    Mockito.when(tableRuntime.getOptimizingProcess()).thenReturn(optimizingProcess);
     List<Snapshot> expectedSnapshots = new ArrayList<>();
     expectedSnapshots.add(table.currentSnapshot());
 
@@ -320,7 +307,7 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     table.newAppend().commit();
     expectedSnapshots.add(table.currentSnapshot());
 
-    new MixedTableMaintainer(table).expireSnapshots(tableRuntime);
+    new MixedTableMaintainer(table, tableRuntime).expireSnapshots();
     Assert.assertEquals(3, Iterables.size(table.snapshots()));
     Assert.assertTrue(
         Iterators.elementsEqual(expectedSnapshots.iterator(), table.snapshots().iterator()));
@@ -332,7 +319,7 @@ public class TestSnapshotExpire extends ExecutorTestBase {
         isKeyedTable()
             ? getMixedTable().asKeyedTable().baseTable()
             : getMixedTable().asUnkeyedTable();
-    table.updateProperties().set(TableProperties.BASE_SNAPSHOT_KEEP_MINUTES, "0").commit();
+    table.updateProperties().set(TableProperties.SNAPSHOT_KEEP_DURATION, "0").commit();
     List<DataFile> dataFiles = writeAndCommitBaseStore(table);
 
     DeleteFiles deleteFiles = table.newDelete();
@@ -344,7 +331,7 @@ public class TestSnapshotExpire extends ExecutorTestBase {
 
     List<DataFile> newDataFiles = writeAndCommitBaseStore(table);
     Assert.assertEquals(3, Iterables.size(table.snapshots()));
-    new MixedTableMaintainer(table).expireSnapshots(System.currentTimeMillis(), 1);
+    new MixedTableMaintainer(table, null).expireSnapshots(System.currentTimeMillis(), 1);
     Assert.assertEquals(1, Iterables.size(table.snapshots()));
 
     dataFiles.forEach(file -> Assert.assertFalse(table.io().exists(file.path().toString())));
@@ -356,7 +343,7 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     Assume.assumeTrue(isKeyedTable());
     KeyedTable testKeyedTable = getMixedTable().asKeyedTable();
 
-    testKeyedTable.updateProperties().set(TableProperties.BASE_SNAPSHOT_KEEP_MINUTES, "0").commit();
+    testKeyedTable.updateProperties().set(TableProperties.SNAPSHOT_KEEP_DURATION, "0").commit();
     testKeyedTable.updateProperties().set(TableProperties.CHANGE_DATA_TTL, "0").commit();
 
     List<DataFile> s1Files = insertChangeDataFiles(testKeyedTable, 1);
@@ -392,7 +379,7 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     Assert.assertEquals(12, Iterables.size(testKeyedTable.changeTable().newScan().planFiles()));
     Assert.assertEquals(3, Iterables.size(testKeyedTable.changeTable().snapshots()));
 
-    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(testKeyedTable);
+    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(testKeyedTable, null);
     tableMaintainer.getChangeMaintainer().expireFiles(secondCommitTime + 1);
     tableMaintainer.getChangeMaintainer().expireSnapshots(secondCommitTime + 1, 1);
 
@@ -418,7 +405,7 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     Assume.assumeTrue(isKeyedTable());
     KeyedTable testKeyedTable = getMixedTable().asKeyedTable();
     BaseTable baseTable = testKeyedTable.baseTable();
-    testKeyedTable.updateProperties().set(TableProperties.BASE_SNAPSHOT_KEEP_MINUTES, "0").commit();
+    testKeyedTable.updateProperties().set(TableProperties.SNAPSHOT_KEEP_DURATION, "0").commit();
     // commit an empty snapshot and its statistic file
     baseTable.newAppend().commit();
     Snapshot s1 = baseTable.currentSnapshot();
@@ -460,7 +447,7 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     Assert.assertTrue(baseTable.io().exists(file1.path()));
     Assert.assertTrue(baseTable.io().exists(file2.path()));
     Assert.assertTrue(baseTable.io().exists(file3.path()));
-    new MixedTableMaintainer(testKeyedTable).expireSnapshots(expireTime, 1);
+    new MixedTableMaintainer(testKeyedTable, null).expireSnapshots(expireTime, 1);
 
     Assert.assertEquals(1, Iterables.size(baseTable.snapshots()));
     Assert.assertFalse(baseTable.io().exists(file1.path()));
@@ -481,25 +468,24 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     Assert.assertEquals(2, Iterables.size(testKeyedTable.changeTable().snapshots()));
 
     DefaultTableRuntime tableRuntime = Mockito.mock(DefaultTableRuntime.class);
-    DefaultOptimizingState optimizingState = Mockito.mock(DefaultOptimizingState.class);
-    Mockito.when(tableRuntime.getOptimizingState()).thenReturn(optimizingState);
     Mockito.when(tableRuntime.getTableIdentifier())
         .thenReturn(ServerTableIdentifier.of(testKeyedTable.id(), getTestFormat()));
-    Mockito.when(optimizingState.getOptimizingStatus()).thenReturn(OptimizingStatus.IDLE);
+    Mockito.when(tableRuntime.getOptimizingStatus()).thenReturn(OptimizingStatus.IDLE);
     Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig(testKeyedTable.properties()));
-    Mockito.when(optimizingState.getTableConfiguration())
+    Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig(testKeyedTable.properties()));
 
-    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(testKeyedTable);
+    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(testKeyedTable, tableRuntime);
     testKeyedTable.updateProperties().set(TableProperties.CHANGE_DATA_TTL, "0").commit();
-    tableMaintainer.expireSnapshots(tableRuntime);
+    tableMaintainer.expireSnapshots();
     Assert.assertEquals(2, Iterables.size(testKeyedTable.changeTable().snapshots()));
 
     testKeyedTable.updateProperties().set("gc.enabled", "true").commit();
     Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig(testKeyedTable.properties()));
-    tableMaintainer.expireSnapshots(tableRuntime);
+    tableMaintainer = new MixedTableMaintainer(testKeyedTable, tableRuntime);
+    tableMaintainer.expireSnapshots();
     Assert.assertEquals(1, Iterables.size(testKeyedTable.changeTable().snapshots()));
   }
 
@@ -515,27 +501,22 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     Assert.assertEquals(2, Iterables.size(testUnkeyedTable.snapshots()));
 
     DefaultTableRuntime tableRuntime = Mockito.mock(DefaultTableRuntime.class);
-    DefaultOptimizingState optimizingState = Mockito.mock(DefaultOptimizingState.class);
-    Mockito.when(tableRuntime.getOptimizingState()).thenReturn(optimizingState);
     Mockito.when(tableRuntime.getTableIdentifier())
         .thenReturn(ServerTableIdentifier.of(testUnkeyedTable.id(), getTestFormat()));
-    Mockito.when(tableRuntime.getOptimizingState().getOptimizingStatus())
-        .thenReturn(OptimizingStatus.IDLE);
+    Mockito.when(tableRuntime.getOptimizingStatus()).thenReturn(OptimizingStatus.IDLE);
+    testUnkeyedTable.updateProperties().set(TableProperties.SNAPSHOT_KEEP_DURATION, "0").commit();
     Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig(testUnkeyedTable.properties()));
 
-    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(testUnkeyedTable);
-    testUnkeyedTable
-        .updateProperties()
-        .set(TableProperties.BASE_SNAPSHOT_KEEP_MINUTES, "0")
-        .commit();
-    tableMaintainer.expireSnapshots(tableRuntime);
+    MixedTableMaintainer tableMaintainer = new MixedTableMaintainer(testUnkeyedTable, tableRuntime);
+    tableMaintainer.expireSnapshots();
     Assert.assertEquals(2, Iterables.size(testUnkeyedTable.snapshots()));
 
     testUnkeyedTable.updateProperties().set("gc.enabled", "true").commit();
     Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig(testUnkeyedTable.properties()));
-    tableMaintainer.expireSnapshots(tableRuntime);
+    tableMaintainer = new MixedTableMaintainer(testUnkeyedTable, tableRuntime);
+    tableMaintainer.expireSnapshots();
     Assert.assertEquals(1, Iterables.size(testUnkeyedTable.snapshots()));
   }
 
@@ -554,16 +535,13 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     table.updateProperties().set(TableProperties.SNAPSHOT_MIN_COUNT, "3").commit();
 
     DefaultTableRuntime tableRuntime = Mockito.mock(DefaultTableRuntime.class);
-    DefaultOptimizingState optimizingState = Mockito.mock(DefaultOptimizingState.class);
-    Mockito.when(tableRuntime.getOptimizingState()).thenReturn(optimizingState);
     Mockito.when(tableRuntime.getTableIdentifier())
         .thenReturn(ServerTableIdentifier.of(table.id(), getTestFormat()));
     Mockito.when(tableRuntime.getTableConfiguration())
         .thenReturn(TableConfigurations.parseTableConfig(table.properties()));
-    Mockito.when(tableRuntime.getOptimizingState().getOptimizingStatus())
-        .thenReturn(OptimizingStatus.IDLE);
+    Mockito.when(tableRuntime.getOptimizingStatus()).thenReturn(OptimizingStatus.IDLE);
 
-    new MixedTableMaintainer(table).expireSnapshots(tableRuntime);
+    new MixedTableMaintainer(table, tableRuntime).expireSnapshots();
     Assert.assertEquals(2, Iterables.size(table.snapshots()));
 
     table.newAppend().commit();
@@ -571,7 +549,7 @@ public class TestSnapshotExpire extends ExecutorTestBase {
     table.newAppend().commit();
     expectedSnapshots.add(table.currentSnapshot());
 
-    new MixedTableMaintainer(table).expireSnapshots(tableRuntime);
+    new MixedTableMaintainer(table, tableRuntime).expireSnapshots();
     Assert.assertEquals(3, Iterables.size(table.snapshots()));
     Assert.assertTrue(
         Iterators.elementsEqual(expectedSnapshots.iterator(), table.snapshots().iterator()));

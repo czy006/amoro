@@ -57,9 +57,9 @@ public class TestMixedFormatSessionCatalog extends MixedTableTestBase {
 
   public static Stream<Arguments> testCreateTable() {
     return Stream.of(
-        Arguments.arguments("arctic", true, ""),
-        Arguments.arguments("arctic", false, "pt"),
-        Arguments.arguments("arctic", true, "pt"),
+        Arguments.arguments("mixed_iceberg", true, ""),
+        Arguments.arguments("mixed_iceberg", false, "pt"),
+        Arguments.arguments("mixed_iceberg", true, "pt"),
         Arguments.arguments("parquet", false, "pt"),
         Arguments.arguments("parquet", false, "dt string"));
   }
@@ -80,7 +80,7 @@ public class TestMixedFormatSessionCatalog extends MixedTableTestBase {
 
     sql(sqlText);
 
-    if ("arctic".equalsIgnoreCase(provider)) {
+    if ("mixed_iceberg".equalsIgnoreCase(provider)) {
       Assertions.assertTrue(tableExists());
     }
 
@@ -105,9 +105,9 @@ public class TestMixedFormatSessionCatalog extends MixedTableTestBase {
 
   public static Stream<Arguments> testCreateTableAsSelect() {
     return Stream.of(
-        Arguments.arguments("arctic", true, "", true),
-        Arguments.arguments("arctic", false, "pt", true),
-        Arguments.arguments("arctic", true, "pt", false),
+        Arguments.arguments("mixed_iceberg", true, "", true),
+        Arguments.arguments("mixed_iceberg", false, "pt", true),
+        Arguments.arguments("mixed_iceberg", true, "pt", false),
         Arguments.arguments("parquet", false, "pt", false),
         Arguments.arguments("parquet", false, "", false));
   }
@@ -129,7 +129,7 @@ public class TestMixedFormatSessionCatalog extends MixedTableTestBase {
     sqlText += " AS SELECT * FROM " + source();
 
     sql(sqlText);
-    if ("arctic".equalsIgnoreCase(provider)) {
+    if ("mixed_iceberg".equalsIgnoreCase(provider)) {
       Assertions.assertTrue(tableExists());
     }
 
@@ -138,15 +138,14 @@ public class TestMixedFormatSessionCatalog extends MixedTableTestBase {
   }
 
   @Test
-  public void testLoadLegacyTable() {
+  public void testLoadTable() {
     createTarget(
         SCHEMA,
         c -> c.withPrimaryKeySpec(PrimaryKeySpec.builderFor(SCHEMA).addColumn("id").build()));
     createViewSource(SCHEMA, source);
     Table hiveTable = loadHiveTable();
     Map<String, String> properties = Maps.newHashMap(hiveTable.getParameters());
-    properties.remove(HiveTableProperties.MIXED_TABLE_FLAG);
-    properties.put(HiveTableProperties.AMORO_TABLE_FLAG_LEGACY, "true");
+    properties.put(HiveTableProperties.MIXED_TABLE_FLAG, "true");
     hiveTable.setParameters(properties);
     try {
       CONTEXT

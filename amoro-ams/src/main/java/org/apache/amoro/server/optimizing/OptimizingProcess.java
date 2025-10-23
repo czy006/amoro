@@ -24,9 +24,11 @@ import org.apache.amoro.process.ProcessStatus;
 
 public interface OptimizingProcess {
 
+  long getTableId();
+
   long getProcessId();
 
-  void close();
+  void close(boolean needCommit);
 
   boolean isClosed();
 

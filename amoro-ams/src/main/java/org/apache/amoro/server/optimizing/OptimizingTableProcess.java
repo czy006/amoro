@@ -42,6 +42,7 @@ import org.apache.amoro.server.process.TableProcessMeta;
 import org.apache.amoro.server.resource.OptimizerThread;
 import org.apache.amoro.server.resource.QuotaProvider;
 import org.apache.amoro.server.table.DefaultTableRuntime;
+import org.apache.amoro.shade.guava32.com.google.common.base.Preconditions;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Lists;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Maps;
 import org.apache.amoro.utils.ExceptionUtil;
@@ -165,6 +166,7 @@ public class OptimizingTableProcess extends PersistentBase implements Optimizing
   }
 
   public TaskRuntime<?> poll(OptimizerThread thread, boolean needQuotaChecking) {
+    Preconditions.checkNotNull(optimizingTasksMap, "optimizingTasksMap not initialized");
     try {
       if (lock.tryLock(10, TimeUnit.MILLISECONDS)) {
         try {
@@ -475,6 +477,10 @@ public class OptimizingTableProcess extends PersistentBase implements Optimizing
   // ===== Private methods =====
 
   private TableOptimizingCommitter buildCommit() {
+    Preconditions.checkNotNull(
+        committerFactory,
+        "CommitterFactory not set for table %s, format may not support committing",
+        tableRuntime.getTableIdentifier());
     return committerFactory.createCommitter(
         tableRuntime.getTableIdentifier(),
         targetSnapshotId,

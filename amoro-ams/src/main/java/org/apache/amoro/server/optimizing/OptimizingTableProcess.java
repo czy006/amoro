@@ -25,14 +25,13 @@ import org.apache.amoro.exception.OptimizingClosedException;
 import org.apache.amoro.exception.PersistenceException;
 import org.apache.amoro.exception.TaskNotFoundException;
 import org.apache.amoro.optimizing.MetricsSummary;
+import org.apache.amoro.optimizing.OptimizingPlanResult;
 import org.apache.amoro.optimizing.OptimizingType;
 import org.apache.amoro.optimizing.RewriteFilesInput;
 import org.apache.amoro.optimizing.RewriteStageTask;
 import org.apache.amoro.optimizing.TableOptimizingCommitter;
-import org.apache.amoro.optimizing.plan.AbstractOptimizingPlanner;
 import org.apache.amoro.process.ProcessStatus;
 import org.apache.amoro.server.AmoroServiceConstants;
-import org.apache.amoro.server.catalog.CatalogManager;
 import org.apache.amoro.server.optimizing.TaskRuntime.Status;
 import org.apache.amoro.server.persistence.OptimizingProcessState;
 import org.apache.amoro.server.persistence.PersistentBase;
@@ -45,13 +44,7 @@ import org.apache.amoro.server.resource.QuotaProvider;
 import org.apache.amoro.server.table.DefaultTableRuntime;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Lists;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Maps;
-import org.apache.amoro.table.MixedTable;
 import org.apache.amoro.utils.ExceptionUtil;
-import org.apache.amoro.utils.MixedDataFiles;
-import org.apache.amoro.utils.TablePropertyUtil;
-import org.apache.iceberg.PartitionSpec;
-import org.apache.iceberg.StructLike;
-import org.apache.iceberg.util.StructLikeMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,33 +84,34 @@ public class OptimizingTableProcess extends PersistentBase implements Optimizing
   private boolean hasCommitted = false;
 
   // Injected dependencies (previously accessed from enclosing OptimizingQueue)
-  private final CatalogManager catalogManager;
   private final QuotaProvider quotaProvider;
   private final Map<ServerTableIdentifier, AtomicInteger> optimizingTasksMap;
   private final Runnable onProcessCompleted;
-  private IcebergOptimizingProcessFactory processFactory;
+  private final TableOptimizingCommitterFactory committerFactory;
 
-  /** Constructor for creating a new process from a planner result. */
+  /** Constructor for creating a new process from a plan result. */
   public OptimizingTableProcess(
-      AbstractOptimizingPlanner planner,
+      OptimizingPlanResult planResult,
       DefaultTableRuntime tableRuntime,
-      CatalogManager catalogManager,
       QuotaProvider quotaProvider,
       Map<ServerTableIdentifier, AtomicInteger> optimizingTasksMap,
-      Runnable onProcessCompleted) {
+      Runnable onProcessCompleted,
+      TableOptimizingCommitterFactory committerFactory) {
     this.tableRuntime = tableRuntime;
-    this.catalogManager = catalogManager;
     this.quotaProvider = quotaProvider;
     this.optimizingTasksMap = optimizingTasksMap;
     this.onProcessCompleted = onProcessCompleted;
-    this.processId = planner.getProcessId();
-    this.optimizingType = planner.getOptimizingType();
-    this.planTime = planner.getPlanTime();
-    this.targetSnapshotId = planner.getTargetSnapshotId();
-    this.targetChangeSnapshotId = planner.getTargetChangeSnapshotId();
-    loadTaskRuntimes(planner.planTasks());
-    this.fromSequence = planner.getFromSequence();
-    this.toSequence = planner.getToSequence();
+    this.committerFactory = committerFactory;
+    this.processId = planResult.getProcessId();
+    this.optimizingType = planResult.getOptimizingType();
+    this.planTime = planResult.getPlanTime();
+    this.targetSnapshotId = planResult.getTargetSnapshotId();
+    this.targetChangeSnapshotId = planResult.getTargetChangeSnapshotId();
+    @SuppressWarnings("unchecked")
+    List<RewriteStageTask> tasks = (List<RewriteStageTask>) (List<?>) planResult.getTasks();
+    loadTaskRuntimes(tasks);
+    this.fromSequence = planResult.getFromSequence();
+    this.toSequence = planResult.getToSequence();
     beginAndPersistProcess();
   }
 
@@ -126,15 +120,15 @@ public class OptimizingTableProcess extends PersistentBase implements Optimizing
       DefaultTableRuntime tableRuntime,
       TableProcessMeta processMeta,
       OptimizingProcessState processState,
-      CatalogManager catalogManager,
       QuotaProvider quotaProvider,
       Map<ServerTableIdentifier, AtomicInteger> optimizingTasksMap,
-      Runnable onProcessCompleted) {
+      Runnable onProcessCompleted,
+      TableOptimizingCommitterFactory committerFactory) {
     this.tableRuntime = tableRuntime;
-    this.catalogManager = catalogManager;
     this.quotaProvider = quotaProvider;
     this.optimizingTasksMap = optimizingTasksMap;
     this.onProcessCompleted = onProcessCompleted;
+    this.committerFactory = committerFactory;
     this.processId = tableRuntime.getProcessId();
     this.optimizingType = OptimizingType.valueOf(processMeta.getProcessType());
     this.targetSnapshotId = processState.getTargetSnapshotId();
@@ -368,10 +362,6 @@ public class OptimizingTableProcess extends PersistentBase implements Optimizing
     return failedReason;
   }
 
-  public void setProcessFactory(IcebergOptimizingProcessFactory processFactory) {
-    this.processFactory = processFactory;
-  }
-
   public Map<OptimizingTaskId, TaskRuntime<RewriteStageTask>> getTaskMap() {
     return taskMap;
   }
@@ -466,43 +456,13 @@ public class OptimizingTableProcess extends PersistentBase implements Optimizing
   // ===== Private methods =====
 
   private TableOptimizingCommitter buildCommit() {
-    MixedTable table =
-        (MixedTable)
-            catalogManager
-                .loadTable(tableRuntime.getTableIdentifier().getIdentifier())
-                .originalTable();
-    // Use factory callback for commit if available, otherwise fallback to direct creation
-    if (processFactory != null) {
-      return processFactory.createCommitter(
-          table, targetSnapshotId, taskMap.values(), fromSequence, toSequence);
-    }
-    // Fallback: direct creation (for backwards compatibility during migration)
-    if (table.isUnkeyedTable()) {
-      return new UnKeyedTableCommit(targetSnapshotId, table, taskMap.values());
-    } else {
-      return new KeyedTableCommit(
-          table,
-          taskMap.values(),
-          targetSnapshotId,
-          convertPartitionSequence(table, fromSequence),
-          convertPartitionSequence(table, toSequence));
-    }
-  }
-
-  private StructLikeMap<Long> convertPartitionSequence(
-      MixedTable table, Map<String, Long> partitionSequence) {
-    PartitionSpec spec = table.spec();
-    StructLikeMap<Long> results = StructLikeMap.create(spec.partitionType());
-    partitionSequence.forEach(
-        (partition, sequence) -> {
-          if (spec.isUnpartitioned()) {
-            results.put(TablePropertyUtil.EMPTY_STRUCT, sequence);
-          } else {
-            StructLike partitionData = MixedDataFiles.data(spec, partition);
-            results.put(partitionData, sequence);
-          }
-        });
-    return results;
+    return committerFactory.createCommitter(
+        tableRuntime.getTableIdentifier(),
+        targetSnapshotId,
+        targetChangeSnapshotId,
+        taskMap.values(),
+        fromSequence,
+        toSequence);
   }
 
   private void beginAndPersistProcess() {

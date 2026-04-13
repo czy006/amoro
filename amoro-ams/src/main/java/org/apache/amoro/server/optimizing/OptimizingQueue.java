@@ -25,6 +25,7 @@ import org.apache.amoro.api.BlockableOperation;
 import org.apache.amoro.api.OptimizingTaskId;
 import org.apache.amoro.api.OptimizingTaskResult;
 import org.apache.amoro.exception.TaskNotFoundException;
+import org.apache.amoro.optimizing.OptimizingPlanResult;
 import org.apache.amoro.optimizing.RewriteStageTask;
 import org.apache.amoro.optimizing.plan.AbstractOptimizingPlanner;
 import org.apache.amoro.process.ProcessStatus;
@@ -90,6 +91,7 @@ public class OptimizingQueue extends PersistentBase {
   private ResourceGroup optimizerGroup;
   private final Map<ServerTableIdentifier, AtomicInteger> optimizingTasksMap =
       new ConcurrentHashMap<>();
+  private final TableOptimizingCommitterFactory committerFactory;
 
   public OptimizingQueue(
       CatalogManager catalogManager,
@@ -105,6 +107,9 @@ public class OptimizingQueue extends PersistentBase {
     this.scheduler = new SchedulingPolicy(optimizerGroup);
     this.catalogManager = catalogManager;
     this.maxPlanningParallelism = maxPlanningParallelism;
+    IcebergOptimizingProcessFactory factory = new IcebergOptimizingProcessFactory();
+    factory.setCatalogManager(catalogManager);
+    this.committerFactory = factory;
     this.metrics =
         new OptimizerGroupMetrics(
             optimizerGroup.getName(), MetricManager.getInstance().getGlobalRegistry(), this);
@@ -169,7 +174,7 @@ public class OptimizingQueue extends PersistentBase {
       return null;
     }
     return new OptimizingTableProcess(
-        tableRuntime, meta, state, catalogManager, quotaProvider, optimizingTasksMap, null);
+        tableRuntime, meta, state, quotaProvider, optimizingTasksMap, null, committerFactory);
   }
 
   private boolean canResumeProcess(
@@ -370,13 +375,14 @@ public class OptimizingQueue extends PersistentBase {
               getAvailableCore(),
               maxInputSizePerThread());
       if (planner.isNecessary()) {
+        OptimizingPlanResult planResult = planner.plan();
         return new OptimizingTableProcess(
-            planner,
+            planResult,
             tableRuntime,
-            catalogManager,
             quotaProvider,
             optimizingTasksMap,
-            () -> clearProcessById(planner.getProcessId()));
+            () -> clearProcessById(planResult.getProcessId()),
+            committerFactory);
       } else {
         tableRuntime.completeEmptyProcess();
         return null;

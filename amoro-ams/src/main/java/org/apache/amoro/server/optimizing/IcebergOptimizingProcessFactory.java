@@ -22,6 +22,7 @@ import org.apache.amoro.Action;
 import org.apache.amoro.ServerTableIdentifier;
 import org.apache.amoro.TableFormat;
 import org.apache.amoro.TableRuntime;
+import org.apache.amoro.optimizing.OptimizingPlanResult;
 import org.apache.amoro.optimizing.RewriteStageTask;
 import org.apache.amoro.optimizing.TableOptimizingCommitter;
 import org.apache.amoro.optimizing.TableOptimizingPlanner;
@@ -40,6 +41,10 @@ import org.apache.amoro.server.table.DefaultTableRuntime;
 import org.apache.amoro.server.utils.IcebergTableUtil;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Sets;
 import org.apache.amoro.table.MixedTable;
+import org.apache.amoro.utils.MixedDataFiles;
+import org.apache.amoro.utils.TablePropertyUtil;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.StructLike;
 import org.apache.iceberg.util.StructLikeMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,7 +60,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * ProcessFactory for Iceberg-format optimizing. Creates {@link OptimizingTableProcess} instances
  * and wraps them in {@link OptimizingProcessAdapter} for compatibility with the Process framework.
  */
-public class IcebergOptimizingProcessFactory implements ProcessFactory {
+public class IcebergOptimizingProcessFactory
+    implements ProcessFactory, TableOptimizingCommitterFactory {
 
   private static final Logger LOG = LoggerFactory.getLogger(IcebergOptimizingProcessFactory.class);
 
@@ -133,16 +139,16 @@ public class IcebergOptimizingProcessFactory implements ProcessFactory {
         return Optional.empty();
       }
 
-      // Plan completes, create OptimizingTableProcess
+      // Plan completes, build plan result and create OptimizingTableProcess
+      OptimizingPlanResult planResult = planner.plan();
       OptimizingTableProcess process =
           new OptimizingTableProcess(
-              planner, dtr, catalogManager, quotaProvider, optimizingTasksMap, onProcessCompleted);
-      process.setProcessFactory(this);
+              planResult, dtr, quotaProvider, optimizingTasksMap, onProcessCompleted, this);
 
       LOG.info(
           "Iceberg optimizing process created for table {} with type {}, {} tasks",
           dtr.getTableIdentifier(),
-          planner.getOptimizingType(),
+          planResult.getOptimizingType(),
           process.getTaskMap().size());
 
       return Optional.of(new OptimizingProcessAdapter(tableRuntime, executeEngine, process));
@@ -166,10 +172,10 @@ public class IcebergOptimizingProcessFactory implements ProcessFactory {
               dtr,
               processMeta,
               processState,
-              catalogManager,
               quotaProvider,
               optimizingTasksMap,
-              onProcessCompleted);
+              onProcessCompleted,
+              this);
 
       LOG.info(
           "Recovered optimizing process {} for table {}",
@@ -188,21 +194,23 @@ public class IcebergOptimizingProcessFactory implements ProcessFactory {
 
   /**
    * Create a committer for the given table and task results. Called by OptimizingTableProcess via
-   * factory reference.
+   * the {@link TableOptimizingCommitterFactory} interface.
    */
+  @Override
   public TableOptimizingCommitter createCommitter(
-      MixedTable table,
+      ServerTableIdentifier tableIdentifier,
       long targetSnapshotId,
+      long targetChangeSnapshotId,
       Collection<TaskRuntime<RewriteStageTask>> tasks,
       Map<String, Long> fromSequence,
       Map<String, Long> toSequence) {
+    MixedTable table = loadTable(tableIdentifier);
     if (table.isUnkeyedTable()) {
       return new UnKeyedTableCommit(targetSnapshotId, table, tasks);
     } else {
-      StructLikeMap<Long> fromSeqMap = convertToStructLikeMap(table, fromSequence);
-      StructLikeMap<Long> toSeqMap = convertToStructLikeMap(table, toSequence);
-      Long fromSnapshotId = null;
-      return new KeyedTableCommit(table, tasks, fromSnapshotId, fromSeqMap, toSeqMap);
+      StructLikeMap<Long> fromSeqMap = convertPartitionSequence(table, fromSequence);
+      StructLikeMap<Long> toSeqMap = convertPartitionSequence(table, toSequence);
+      return new KeyedTableCommit(table, tasks, targetSnapshotId, fromSeqMap, toSeqMap);
     }
   }
 
@@ -212,11 +220,14 @@ public class IcebergOptimizingProcessFactory implements ProcessFactory {
   }
 
   private MixedTable loadTable(DefaultTableRuntime tableRuntime) {
+    return loadTable(tableRuntime.getTableIdentifier());
+  }
+
+  private MixedTable loadTable(ServerTableIdentifier identifier) {
     if (catalogManager == null) {
       throw new IllegalStateException("CatalogManager not set, call setCatalogManager() first");
     }
-    return (MixedTable)
-        catalogManager.loadTable(tableRuntime.getTableIdentifier().getIdentifier()).originalTable();
+    return (MixedTable) catalogManager.loadTable(identifier.getIdentifier()).originalTable();
   }
 
   private TableProcessMeta loadProcessMeta(DefaultTableRuntime dtr, long processId) {
@@ -235,13 +246,20 @@ public class IcebergOptimizingProcessFactory implements ProcessFactory {
     return state;
   }
 
-  private StructLikeMap<Long> convertToStructLikeMap(
-      MixedTable table, Map<String, Long> sequenceMap) {
-    if (sequenceMap == null || sequenceMap.isEmpty()) {
-      return StructLikeMap.create(table.spec().partitionType());
-    }
-    StructLikeMap<Long> result = StructLikeMap.create(table.spec().partitionType());
-    return result;
+  private StructLikeMap<Long> convertPartitionSequence(
+      MixedTable table, Map<String, Long> partitionSequence) {
+    PartitionSpec spec = table.spec();
+    StructLikeMap<Long> results = StructLikeMap.create(spec.partitionType());
+    partitionSequence.forEach(
+        (partition, sequence) -> {
+          if (spec.isUnpartitioned()) {
+            results.put(TablePropertyUtil.EMPTY_STRUCT, sequence);
+          } else {
+            StructLike partitionData = MixedDataFiles.data(spec, partition);
+            results.put(partitionData, sequence);
+          }
+        });
+    return results;
   }
 
   @Override

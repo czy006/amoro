@@ -33,6 +33,7 @@ import org.apache.amoro.exception.ForbiddenException;
 import org.apache.amoro.exception.IllegalTaskStateException;
 import org.apache.amoro.exception.ObjectNotExistsException;
 import org.apache.amoro.exception.PluginRetryAuthException;
+import org.apache.amoro.process.ProcessFactory;
 import org.apache.amoro.resource.Resource;
 import org.apache.amoro.resource.ResourceContainer;
 import org.apache.amoro.resource.ResourceGroup;
@@ -41,7 +42,9 @@ import org.apache.amoro.server.catalog.CatalogManager;
 import org.apache.amoro.server.dashboard.model.OptimizerResourceInfo;
 import org.apache.amoro.server.ha.HighAvailabilityContainer;
 import org.apache.amoro.server.manager.AbstractOptimizerContainer;
+import org.apache.amoro.server.optimizing.IcebergOptimizingProcessFactory;
 import org.apache.amoro.server.optimizing.OptimizerExecuteEngine;
+import org.apache.amoro.server.optimizing.OptimizingActionCoordinator;
 import org.apache.amoro.server.optimizing.OptimizingProcess;
 import org.apache.amoro.server.optimizing.OptimizingQueue;
 import org.apache.amoro.server.optimizing.OptimizingStatus;
@@ -131,6 +134,7 @@ public class DefaultOptimizingService extends StatedPersistentBase
   // New refactored components
   private final QuotaManager quotaManager;
   private final OptimizerRegistryService registryService;
+  private final OptimizingActionCoordinator optimizingCoordinator;
   private OptimizerExecuteEngine optimizerExecuteEngine;
 
   public DefaultOptimizingService(
@@ -179,6 +183,23 @@ public class DefaultOptimizingService extends StatedPersistentBase
     this.registryService =
         new OptimizerRegistryService(
             optimizerTouchTimeout, taskAckTimeout, taskExecuteTimeout, quotaManager);
+    this.optimizingCoordinator = createOptimizingCoordinator();
+  }
+
+  private OptimizingActionCoordinator createOptimizingCoordinator() {
+    OptimizingActionCoordinator coordinator =
+        new OptimizingActionCoordinator(maxPlanningParallelism);
+    coordinator.open(new HashMap<>());
+    // Configure all registered Iceberg factories with server-specific dependencies
+    for (org.apache.amoro.TableFormat format : org.apache.amoro.TableFormat.values()) {
+      ProcessFactory factory = coordinator.getProcessFactory(format);
+      if (factory instanceof IcebergOptimizingProcessFactory) {
+        IcebergOptimizingProcessFactory icebergFactory = (IcebergOptimizingProcessFactory) factory;
+        icebergFactory.setCatalogManager(catalogManager);
+        icebergFactory.setQuotaProvider(this);
+      }
+    }
+    return coordinator;
   }
 
   public RuntimeHandlerChain getTableRuntimeHandler() {
@@ -197,7 +218,7 @@ public class DefaultOptimizingService extends StatedPersistentBase
           List<DefaultTableRuntime> tableRuntimes = groupToTableRuntimes.remove(groupName);
           OptimizingQueue optimizingQueue =
               new OptimizingQueue(
-                  catalogManager,
+                  optimizingCoordinator,
                   group,
                   this,
                   planExecutor,
@@ -456,7 +477,7 @@ public class DefaultOptimizingService extends StatedPersistentBase
         () -> {
           OptimizingQueue optimizingQueue =
               new OptimizingQueue(
-                  catalogManager,
+                  optimizingCoordinator,
                   resourceGroup,
                   this,
                   planExecutor,
@@ -491,6 +512,7 @@ public class DefaultOptimizingService extends StatedPersistentBase
     if (optimizerExecuteEngine != null) {
       optimizerExecuteEngine.close();
     }
+    optimizingCoordinator.close();
     optimizingQueueByGroup.clear();
     optimizingQueueByToken.clear();
     authOptimizers.clear();

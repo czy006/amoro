@@ -85,8 +85,8 @@ public class OptimizingTableProcess extends PersistentBase implements Optimizing
 
   // Injected dependencies (previously accessed from enclosing OptimizingQueue)
   private final QuotaProvider quotaProvider;
-  private final Map<ServerTableIdentifier, AtomicInteger> optimizingTasksMap;
-  private final Runnable onProcessCompleted;
+  private Map<ServerTableIdentifier, AtomicInteger> optimizingTasksMap;
+  private Runnable onProcessCompleted;
   private final TableOptimizingCommitterFactory committerFactory;
 
   /** Constructor for creating a new process from a plan result. */
@@ -143,6 +143,25 @@ public class OptimizingTableProcess extends PersistentBase implements Optimizing
     this.status = processMeta.getStatus();
     tableRuntime.recover(this);
     loadTaskRuntimes(this);
+  }
+
+  /**
+   * Set the per-queue optimizing tasks map. Must be called before poll() is invoked.
+   *
+   * @param optimizingTasksMap the map tracking active task counts per table
+   */
+  public void setOptimizingTasksMap(Map<ServerTableIdentifier, AtomicInteger> optimizingTasksMap) {
+    this.optimizingTasksMap = optimizingTasksMap;
+  }
+
+  /**
+   * Set the callback to run when this process completes. Must be called before the process can
+   * complete (i.e., before tasks are polled and executed).
+   *
+   * @param onProcessCompleted callback to invoke on process completion
+   */
+  public void setOnProcessCompleted(Runnable onProcessCompleted) {
+    this.onProcessCompleted = onProcessCompleted;
   }
 
   public TaskRuntime<?> poll(OptimizerThread thread, boolean needQuotaChecking) {

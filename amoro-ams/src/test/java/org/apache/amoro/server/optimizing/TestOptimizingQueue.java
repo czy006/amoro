@@ -71,6 +71,7 @@ import org.junit.runners.Parameterized;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
@@ -117,6 +118,20 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     return new ResourceGroup.Builder("test", "local").build();
   }
 
+  protected static OptimizingActionCoordinator createTestCoordinator() {
+    OptimizingActionCoordinator coordinator = new OptimizingActionCoordinator(1);
+    coordinator.open(new HashMap<>());
+    // Configure Iceberg factories with the test catalog manager
+    for (TableFormat format : TableFormat.values()) {
+      org.apache.amoro.process.ProcessFactory factory = coordinator.getProcessFactory(format);
+      if (factory instanceof IcebergOptimizingProcessFactory) {
+        IcebergOptimizingProcessFactory icebergFactory = (IcebergOptimizingProcessFactory) factory;
+        icebergFactory.setCatalogManager(CATALOG_MANAGER);
+      }
+    }
+    return coordinator;
+  }
+
   @Before
   public void setUp() {
     // Clean up any existing metrics for the test resource group before each test
@@ -137,7 +152,7 @@ public class TestOptimizingQueue extends AMSTableTestBase {
 
   protected OptimizingQueue buildOptimizingGroupService(DefaultTableRuntime tableRuntime) {
     return new OptimizingQueue(
-        CATALOG_MANAGER,
+        createTestCoordinator(),
         testResourceGroup(),
         quotaProvider,
         planExecutor,
@@ -147,7 +162,7 @@ public class TestOptimizingQueue extends AMSTableTestBase {
 
   private OptimizingQueue buildOptimizingGroupService() {
     return new OptimizingQueue(
-        CATALOG_MANAGER,
+        createTestCoordinator(),
         testResourceGroup(),
         quotaProvider,
         planExecutor,
@@ -202,7 +217,7 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     DefaultTableRuntime tableRuntime = initTableWithPartitionedFiles();
     OptimizingQueue queue =
         new OptimizingQueue(
-            CATALOG_MANAGER,
+            createTestCoordinator(),
             testResourceGroup(),
             resourceGroup -> 2,
             planExecutor,
@@ -237,7 +252,7 @@ public class TestOptimizingQueue extends AMSTableTestBase {
     DefaultTableRuntime tableRuntime = initTableWithPartitionedFiles();
     OptimizingQueue queue =
         new OptimizingQueue(
-            CATALOG_MANAGER,
+            createTestCoordinator(),
             testResourceGroup(),
             resourceGroup -> 2,
             planExecutor,
@@ -273,7 +288,7 @@ public class TestOptimizingQueue extends AMSTableTestBase {
 
     OptimizingQueue queue =
         new OptimizingQueue(
-            CATALOG_MANAGER,
+            createTestCoordinator(),
             testResourceGroup(),
             resourceGroup -> 2,
             planExecutor,

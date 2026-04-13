@@ -30,6 +30,8 @@ import org.apache.amoro.optimizing.RewriteFilesOutput;
 import org.apache.amoro.optimizing.TableOptimizing;
 import org.apache.amoro.resource.ResourceGroup;
 import org.apache.amoro.server.AmoroServiceConstants;
+import org.apache.amoro.server.optimizing.IcebergOptimizingProcessFactory;
+import org.apache.amoro.server.optimizing.OptimizingActionCoordinator;
 import org.apache.amoro.server.optimizing.OptimizingQueue;
 import org.apache.amoro.server.optimizing.OptimizingStatus;
 import org.apache.amoro.server.optimizing.OptimizingTaskMeta;
@@ -53,6 +55,7 @@ import org.junit.runners.Parameterized;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -128,12 +131,25 @@ public class TestOptimizingUtil extends AMSTableTestBase {
 
   protected OptimizingQueue buildOptimizingGroupService(DefaultTableRuntime tableRuntime) {
     return new OptimizingQueue(
-        CATALOG_MANAGER,
+        createTestCoordinator(),
         testResourceGroup(),
         quotaProvider,
         planExecutor,
         Collections.singletonList(tableRuntime),
         1);
+  }
+
+  protected static OptimizingActionCoordinator createTestCoordinator() {
+    OptimizingActionCoordinator coordinator = new OptimizingActionCoordinator(1);
+    coordinator.open(new HashMap<>());
+    for (TableFormat format : TableFormat.values()) {
+      org.apache.amoro.process.ProcessFactory factory = coordinator.getProcessFactory(format);
+      if (factory instanceof IcebergOptimizingProcessFactory) {
+        IcebergOptimizingProcessFactory icebergFactory = (IcebergOptimizingProcessFactory) factory;
+        icebergFactory.setCatalogManager(CATALOG_MANAGER);
+      }
+    }
+    return coordinator;
   }
 
   protected static ResourceGroup testResourceGroup() {

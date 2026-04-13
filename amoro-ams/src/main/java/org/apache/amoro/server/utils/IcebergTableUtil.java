@@ -219,6 +219,8 @@ public class IcebergTableUtil {
     return allManifestFiles;
   }
 
+  /** @deprecated Use ProcessFactory SPI instead. Will be removed in a future version. */
+  @Deprecated
   public static AbstractOptimizingEvaluator createOptimizingEvaluator(
       DefaultTableRuntime tableRuntime,
       MixedTable table,
@@ -263,12 +265,16 @@ public class IcebergTableUtil {
     throw new IllegalStateException("Un-supported table-format:" + table.format().toString());
   }
 
+  /** @deprecated Use ProcessFactory SPI instead. Will be removed in a future version. */
+  @Deprecated
   public static AbstractOptimizingEvaluator createOptimizingEvaluator(
       DefaultTableRuntime tableRuntime, MixedTable table, int maxPendingPartitions) {
     TableSnapshot snapshot = IcebergTableUtil.getSnapshot(table, tableRuntime);
     return createOptimizingEvaluator(tableRuntime, table, snapshot, maxPendingPartitions);
   }
 
+  /** @deprecated Use ProcessFactory SPI instead. Will be removed in a future version. */
+  @Deprecated
   public static AbstractOptimizingPlanner createOptimizingPlanner(
       DefaultTableRuntime tableRuntime,
       MixedTable table,

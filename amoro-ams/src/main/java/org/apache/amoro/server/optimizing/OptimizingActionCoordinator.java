@@ -171,4 +171,14 @@ public class OptimizingActionCoordinator implements ActionCoordinator {
   public void setMaxPlanningParallelism(int maxPlanningParallelism) {
     this.maxPlanningParallelism = maxPlanningParallelism;
   }
+
+  /**
+   * Get the ProcessFactory registered for the given table format.
+   *
+   * @param format the table format
+   * @return the ProcessFactory, or null if no factory is registered for the format
+   */
+  public ProcessFactory getProcessFactory(TableFormat format) {
+    return processFactories.get(format);
+  }
 }

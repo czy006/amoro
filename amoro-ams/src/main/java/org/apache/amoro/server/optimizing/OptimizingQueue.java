@@ -18,20 +18,17 @@
 
 package org.apache.amoro.server.optimizing;
 
-import org.apache.amoro.AmoroTable;
-import org.apache.amoro.OptimizerProperties;
 import org.apache.amoro.ServerTableIdentifier;
 import org.apache.amoro.api.BlockableOperation;
 import org.apache.amoro.api.OptimizingTaskId;
 import org.apache.amoro.api.OptimizingTaskResult;
 import org.apache.amoro.exception.TaskNotFoundException;
-import org.apache.amoro.optimizing.OptimizingPlanResult;
 import org.apache.amoro.optimizing.RewriteStageTask;
-import org.apache.amoro.optimizing.plan.AbstractOptimizingPlanner;
+import org.apache.amoro.process.ProcessFactory;
 import org.apache.amoro.process.ProcessStatus;
+import org.apache.amoro.process.TableProcess;
 import org.apache.amoro.resource.ResourceGroup;
 import org.apache.amoro.server.AmoroServiceConstants;
-import org.apache.amoro.server.catalog.CatalogManager;
 import org.apache.amoro.server.manager.MetricManager;
 import org.apache.amoro.server.persistence.OptimizingProcessState;
 import org.apache.amoro.server.persistence.PersistentBase;
@@ -44,13 +41,10 @@ import org.apache.amoro.server.resource.OptimizerThread;
 import org.apache.amoro.server.resource.QuotaProvider;
 import org.apache.amoro.server.table.DefaultTableRuntime;
 import org.apache.amoro.server.table.blocker.TableBlocker;
-import org.apache.amoro.server.utils.IcebergTableUtil;
 import org.apache.amoro.shade.guava32.com.google.common.annotations.VisibleForTesting;
 import org.apache.amoro.shade.guava32.com.google.common.base.Preconditions;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Maps;
-import org.apache.amoro.table.MixedTable;
 import org.apache.amoro.table.TableIdentifier;
-import org.apache.amoro.utils.CompatiblePropertyUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,7 +74,7 @@ public class OptimizingQueue extends PersistentBase {
   private final QuotaProvider quotaProvider;
   private final Queue<OptimizingTableProcess> tableQueue = new LinkedTransferQueue<>();
   private final SchedulingPolicy scheduler;
-  private final CatalogManager catalogManager;
+  private final OptimizingActionCoordinator coordinator;
   private final Executor planExecutor;
   // Keep all planning table identifiers
   private final Set<ServerTableIdentifier> planningTables = new HashSet<>();
@@ -91,10 +85,9 @@ public class OptimizingQueue extends PersistentBase {
   private ResourceGroup optimizerGroup;
   private final Map<ServerTableIdentifier, AtomicInteger> optimizingTasksMap =
       new ConcurrentHashMap<>();
-  private final TableOptimizingCommitterFactory committerFactory;
 
   public OptimizingQueue(
-      CatalogManager catalogManager,
+      OptimizingActionCoordinator coordinator,
       ResourceGroup optimizerGroup,
       QuotaProvider quotaProvider,
       Executor planExecutor,
@@ -105,11 +98,8 @@ public class OptimizingQueue extends PersistentBase {
     this.optimizerGroup = optimizerGroup;
     this.quotaProvider = quotaProvider;
     this.scheduler = new SchedulingPolicy(optimizerGroup);
-    this.catalogManager = catalogManager;
+    this.coordinator = coordinator;
     this.maxPlanningParallelism = maxPlanningParallelism;
-    IcebergOptimizingProcessFactory factory = new IcebergOptimizingProcessFactory();
-    factory.setCatalogManager(catalogManager);
-    this.committerFactory = factory;
     this.metrics =
         new OptimizerGroupMetrics(
             optimizerGroup.getName(), MetricManager.getInstance().getGlobalRegistry(), this);
@@ -173,6 +163,11 @@ public class OptimizingQueue extends PersistentBase {
           tableRuntime.getTableIdentifier());
       return null;
     }
+    ProcessFactory factory = coordinator.getProcessFactory(tableRuntime.getFormat());
+    TableOptimizingCommitterFactory committerFactory =
+        (factory instanceof TableOptimizingCommitterFactory)
+            ? (TableOptimizingCommitterFactory) factory
+            : null;
     return new OptimizingTableProcess(
         tableRuntime, meta, state, quotaProvider, optimizingTasksMap, null, committerFactory);
   }
@@ -364,31 +359,18 @@ public class OptimizingQueue extends PersistentBase {
   }
 
   private OptimizingTableProcess planInternal(DefaultTableRuntime tableRuntime) {
-    tableRuntime.beginPlanning();
     try {
-      ServerTableIdentifier identifier = tableRuntime.getTableIdentifier();
-      AmoroTable<?> table = catalogManager.loadTable(identifier.getIdentifier());
-      AbstractOptimizingPlanner planner =
-          IcebergTableUtil.createOptimizingPlanner(
-              tableRuntime.refresh(table),
-              (MixedTable) table.originalTable(),
-              getAvailableCore(),
-              maxInputSizePerThread());
-      if (planner.isNecessary()) {
-        OptimizingPlanResult planResult = planner.plan();
-        return new OptimizingTableProcess(
-            planResult,
-            tableRuntime,
-            quotaProvider,
-            optimizingTasksMap,
-            () -> clearProcessById(planResult.getProcessId()),
-            committerFactory);
+      Optional<TableProcess> tableProcess = coordinator.trigger(tableRuntime);
+      if (tableProcess.isPresent()) {
+        OptimizingProcessAdapter adapter = (OptimizingProcessAdapter) tableProcess.get();
+        OptimizingTableProcess process = adapter.getDelegate();
+        process.setOptimizingTasksMap(optimizingTasksMap);
+        process.setOnProcessCompleted(() -> clearProcessById(process.getProcessId()));
+        return process;
       } else {
-        tableRuntime.completeEmptyProcess();
         return null;
       }
     } catch (Throwable throwable) {
-      tableRuntime.planFailed();
       LOG.error("Planning table {} failed", tableRuntime.getTableIdentifier(), throwable);
       throw throwable;
     }
@@ -472,18 +454,6 @@ public class OptimizingQueue extends PersistentBase {
         .filter(p -> p.getProcessId() == taskId.getProcessId())
         .findFirst()
         .orElseThrow(() -> new TaskNotFoundException(taskId));
-  }
-
-  private double getAvailableCore() {
-    // the available core should be at least 1
-    return Math.max(quotaProvider.getTotalQuota(optimizerGroup.getName()), 1);
-  }
-
-  private long maxInputSizePerThread() {
-    return CompatiblePropertyUtil.propertyAsLong(
-        optimizerGroup.getProperties(),
-        OptimizerProperties.MAX_INPUT_FILE_SIZE_PER_THREAD,
-        OptimizerProperties.MAX_INPUT_FILE_SIZE_PER_THREAD_DEFAULT);
   }
 
   @VisibleForTesting

@@ -26,6 +26,7 @@ import org.apache.amoro.process.ProcessTriggerStrategy;
 import org.apache.amoro.process.RecoverProcessFailedException;
 import org.apache.amoro.process.TableProcess;
 import org.apache.amoro.process.TableProcessStore;
+import org.apache.amoro.shade.guava32.com.google.common.collect.Sets;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -41,7 +42,9 @@ public class PaimonOptimizingProcessFactory implements ProcessFactory {
 
   @Override
   public Map<TableFormat, Set<Action>> supportedActions() {
-    return new HashMap<>();
+    Map<TableFormat, Set<Action>> result = new HashMap<>();
+    result.put(TableFormat.PAIMON, Sets.newHashSet(Action.register("OPTIMIZING")));
+    return result;
   }
 
   @Override

@@ -55,7 +55,7 @@ public abstract class TableProcess implements AmoroProcess {
 
   @Override
   public String getExecutionEngine() {
-    return executeEngine.name();
+    return executeEngine != null ? executeEngine.name() : "unknown";
   }
 
   public TableRuntime getTableRuntime() {

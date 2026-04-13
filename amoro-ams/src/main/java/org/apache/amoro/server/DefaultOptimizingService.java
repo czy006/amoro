@@ -262,6 +262,7 @@ public class DefaultOptimizingService extends StatedPersistentBase
     authOptimizers.put(optimizer.getToken(), optimizer);
     optimizingQueueByToken.put(optimizer.getToken(), optimizingQueue);
     optimizerKeeper.keepInTouch(optimizer);
+    quotaManager.addOptimizer(optimizer);
   }
 
   private void unregisterOptimizer(String token) {
@@ -270,6 +271,9 @@ public class DefaultOptimizingService extends StatedPersistentBase
     OptimizerInstance optimizer = authOptimizers.remove(token);
     if (optimizingQueue != null) {
       optimizingQueue.removeOptimizer(optimizer);
+    }
+    if (optimizer != null) {
+      quotaManager.removeOptimizer(optimizer);
     }
   }
 
@@ -390,11 +394,6 @@ public class DefaultOptimizingService extends StatedPersistentBase
     OptimizingQueue queue = getQueueByGroup(registerInfo.getGroupName());
     OptimizerInstance optimizer = new OptimizerInstance(registerInfo, queue.getContainerName());
     registerOptimizer(optimizer, true);
-
-    // Also register with OptimizerRegistryService for the new flow
-    if (optimizerExecuteEngine != null) {
-      quotaManager.addOptimizer(optimizer);
-    }
 
     return optimizer.getToken();
   }
@@ -832,6 +831,7 @@ public class DefaultOptimizingService extends StatedPersistentBase
       optimizingQueue.addOptimizer(optimizer);
       authOptimizers.put(optimizer.getToken(), optimizer);
       optimizingQueueByToken.put(optimizer.getToken(), optimizingQueue);
+      quotaManager.addOptimizer(optimizer);
     }
 
     private void removeOptimizerFromLocal(String token) {
@@ -839,6 +839,7 @@ public class DefaultOptimizingService extends StatedPersistentBase
       OptimizerInstance optimizer = authOptimizers.remove(token);
       if (optimizingQueue != null && optimizer != null) {
         optimizingQueue.removeOptimizer(optimizer);
+        quotaManager.removeOptimizer(optimizer);
       }
     }
 

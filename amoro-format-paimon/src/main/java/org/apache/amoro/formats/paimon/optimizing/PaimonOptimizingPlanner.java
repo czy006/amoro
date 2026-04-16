@@ -22,9 +22,6 @@ import org.apache.amoro.optimizing.OptimizingPlanResult;
 import org.apache.amoro.optimizing.OptimizingType;
 import org.apache.amoro.optimizing.TableOptimizingPlanner;
 
-import java.util.Collections;
-import java.util.Map;
-
 public class PaimonOptimizingPlanner implements TableOptimizingPlanner {
 
   @Override
@@ -62,15 +59,5 @@ public class PaimonOptimizingPlanner implements TableOptimizingPlanner {
   @Override
   public long getTargetChangeSnapshotId() {
     return 0;
-  }
-
-  @Override
-  public Map<String, Long> getFromSequence() {
-    return Collections.emptyMap();
-  }
-
-  @Override
-  public Map<String, Long> getToSequence() {
-    return Collections.emptyMap();
   }
 }

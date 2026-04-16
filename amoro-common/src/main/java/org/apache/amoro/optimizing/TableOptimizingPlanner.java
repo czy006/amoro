@@ -18,8 +18,6 @@
 
 package org.apache.amoro.optimizing;
 
-import java.util.Map;
-
 /**
  * Internal abstraction for table optimizing planning, used by ProcessFactory implementations. This
  * is NOT a standalone SPI interface; ProcessFactory implementations encapsulate planner creation
@@ -47,10 +45,4 @@ public interface TableOptimizingPlanner {
 
   /** Get the target change snapshot ID for keyed tables. */
   long getTargetChangeSnapshotId();
-
-  /** Get the from-sequence map for partition-level sequence tracking. */
-  Map<String, Long> getFromSequence();
-
-  /** Get the to-sequence map for partition-level sequence tracking. */
-  Map<String, Long> getToSequence();
 }

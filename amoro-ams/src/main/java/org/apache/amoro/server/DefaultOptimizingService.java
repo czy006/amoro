@@ -18,8 +18,10 @@
 
 package org.apache.amoro.server;
 
+import org.apache.amoro.Action;
 import org.apache.amoro.AmoroTable;
 import org.apache.amoro.OptimizerProperties;
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.TableRuntime;
 import org.apache.amoro.api.OptimizerRegisterInfo;
 import org.apache.amoro.api.OptimizingService;
@@ -33,6 +35,10 @@ import org.apache.amoro.exception.ForbiddenException;
 import org.apache.amoro.exception.IllegalTaskStateException;
 import org.apache.amoro.exception.ObjectNotExistsException;
 import org.apache.amoro.exception.PluginRetryAuthException;
+import org.apache.amoro.process.ProcessFactory;
+import org.apache.amoro.process.RecoverProcessFailedException;
+import org.apache.amoro.process.TableProcess;
+import org.apache.amoro.process.TableProcessStore;
 import org.apache.amoro.resource.Resource;
 import org.apache.amoro.resource.ResourceContainer;
 import org.apache.amoro.resource.ResourceGroup;
@@ -124,6 +130,7 @@ public class DefaultOptimizingService extends StatedPersistentBase
   private final BucketAssignStore bucketAssignStore;
   private final HighAvailabilityContainer haContainer;
   private final boolean isMasterSlaveMode;
+  private final ProcessFactory optimizingFactory;
 
   public DefaultOptimizingService(
       Configurations serviceConfig,
@@ -131,7 +138,8 @@ public class DefaultOptimizingService extends StatedPersistentBase
       OptimizerManager optimizerManager,
       TableService tableService,
       BucketAssignStore bucketAssignStore,
-      HighAvailabilityContainer haContainer) {
+      HighAvailabilityContainer haContainer,
+      List<ProcessFactory> processFactories) {
     this.optimizerTouchTimeout =
         serviceConfig.getDurationInMillis(AmoroManagementConf.OPTIMIZER_HB_TIMEOUT);
     this.taskAckTimeout =
@@ -159,6 +167,7 @@ public class DefaultOptimizingService extends StatedPersistentBase
     this.isMasterSlaveMode =
         haContainer != null
             && serviceConfig.getBoolean(AmoroManagementConf.HA_USE_MASTER_SLAVE_MODE);
+    this.optimizingFactory = resolveOptimizingFactory(processFactories);
     this.tableHandlerChain = new TableRuntimeHandlerImpl();
     this.planExecutor =
         Executors.newCachedThreadPool(
@@ -166,10 +175,17 @@ public class DefaultOptimizingService extends StatedPersistentBase
                 .setNameFormat("plan-executor-thread-%d")
                 .setDaemon(true)
                 .build());
+    LOG.info(
+        "Use process factory {} for table optimizing planner/committer.",
+        this.optimizingFactory.name());
   }
 
   public RuntimeHandlerChain getTableRuntimeHandler() {
     return tableHandlerChain;
+  }
+
+  ProcessFactory getOptimizingFactory() {
+    return optimizingFactory;
   }
 
   private void loadOptimizingQueues(List<DefaultTableRuntime> tableRuntimeList) {
@@ -189,7 +205,8 @@ public class DefaultOptimizingService extends StatedPersistentBase
                   this,
                   planExecutor,
                   Optional.ofNullable(tableRuntimes).orElseGet(ArrayList::new),
-                  maxPlanningParallelism);
+                  maxPlanningParallelism,
+                  optimizingFactory);
           optimizingQueueByGroup.put(groupName, optimizingQueue);
           optimizerGroupKeeper.keepInTouch(groupName, 1);
         });
@@ -400,11 +417,37 @@ public class DefaultOptimizingService extends StatedPersistentBase
                   this,
                   planExecutor,
                   new ArrayList<>(),
-                  maxPlanningParallelism);
+                  maxPlanningParallelism,
+                  optimizingFactory);
           String groupName = resourceGroup.getName();
           optimizingQueueByGroup.put(groupName, optimizingQueue);
           optimizerGroupKeeper.keepInTouch(groupName, 1);
         });
+  }
+
+  private ProcessFactory resolveOptimizingFactory(List<ProcessFactory> processFactories) {
+    List<ProcessFactory> factories =
+        Optional.ofNullable(processFactories).orElseGet(Collections::emptyList);
+    Optional<ProcessFactory> factoryByName =
+        factories.stream().filter(factory -> "iceberg".equals(factory.name())).findFirst();
+    if (factoryByName.isPresent()) {
+      return factoryByName.get();
+    }
+
+    Set<TableFormat> requiredFormats =
+        Sets.newHashSet(TableFormat.ICEBERG, TableFormat.MIXED_ICEBERG, TableFormat.MIXED_HIVE);
+    Optional<ProcessFactory> factoryByFormats =
+        factories.stream()
+            .filter(factory -> factory.supportedFormats().containsAll(requiredFormats))
+            .findFirst();
+    if (factoryByFormats.isPresent()) {
+      return factoryByFormats.get();
+    }
+
+    LOG.warn(
+        "No process factory found for optimizing formats {}, fallback to noop factory.",
+        requiredFormats);
+    return new NoopOptimizingProcessFactory();
   }
 
   public void deleteResourceGroup(String groupName) {
@@ -955,6 +998,37 @@ public class DefaultOptimizingService extends StatedPersistentBase
           "Resource Group:{} has insufficient resources, created an optimizer with parallelism of {}",
           resourceGroup.getName(),
           requiredCores);
+    }
+  }
+
+  private static class NoopOptimizingProcessFactory implements ProcessFactory {
+
+    @Override
+    public Map<TableFormat, Set<Action>> supportedActions() {
+      return Collections.emptyMap();
+    }
+
+    @Override
+    public Optional<TableProcess> trigger(TableRuntime tableRuntime, Action action) {
+      return Optional.empty();
+    }
+
+    @Override
+    public TableProcess recover(TableRuntime tableRuntime, TableProcessStore store)
+        throws RecoverProcessFailedException {
+      throw new RecoverProcessFailedException(
+          "NoopOptimizingProcessFactory does not support action: " + store.getAction());
+    }
+
+    @Override
+    public void open(Map<String, String> properties) {}
+
+    @Override
+    public void close() {}
+
+    @Override
+    public String name() {
+      return "noop-optimizing";
     }
   }
 }

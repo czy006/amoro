@@ -18,6 +18,7 @@
 
 package org.apache.amoro.server.terminal;
 
+import org.apache.amoro.server.dashboard.utils.HtmlEscapeUtil;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Lists;
 
 import java.text.SimpleDateFormat;
@@ -34,11 +35,13 @@ public class ExecutionResult {
 
   public synchronized void appendLog(String log) {
     String date = PATTEN.format(new Date());
-    this.logs.add(date + " " + log);
+    this.logs.add(date + " " + HtmlEscapeUtil.escape(log));
   }
 
   public synchronized void appendLogs(Collection<String> logs) {
-    this.logs.addAll(logs);
+    for (String log : logs) {
+      this.logs.add(HtmlEscapeUtil.escape(log));
+    }
   }
 
   public synchronized void appendResult(StatementResult result) {

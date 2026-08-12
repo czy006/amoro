@@ -30,7 +30,7 @@ defineExpose({
 
 <template>
   <div class="sql-log">
-    <div style="white-space: pre-wrap;font-size: 12px;" v-html="outputLog" />
+    <div style="white-space: pre-wrap;font-size: 12px;">{{ outputLog }}</div>
   </div>
 </template>
 

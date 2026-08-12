@@ -18,6 +18,7 @@
 
 package org.apache.amoro.server.terminal;
 
+import org.apache.amoro.server.dashboard.utils.HtmlEscapeUtil;
 import org.apache.amoro.shade.guava32.com.google.common.collect.Lists;
 
 import java.util.List;
@@ -45,7 +46,7 @@ public class StatementResult {
   }
 
   public void withExceptionLog(String log) {
-    this.logs = log;
+    this.logs = HtmlEscapeUtil.escape(log);
     this.success = false;
   }
 

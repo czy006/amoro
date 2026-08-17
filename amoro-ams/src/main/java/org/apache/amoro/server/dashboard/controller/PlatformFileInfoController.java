@@ -22,12 +22,11 @@ import io.javalin.http.Context;
 import org.apache.amoro.server.dashboard.PlatformFileManager;
 import org.apache.amoro.server.dashboard.response.ErrorResponse;
 import org.apache.amoro.server.dashboard.response.OkResponse;
+import org.apache.amoro.server.dashboard.utils.SecureXmlParser;
 import org.apache.amoro.shade.guava32.com.google.common.base.Preconditions;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
-import org.apache.hadoop.conf.Configuration;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Base64;
@@ -49,12 +48,10 @@ public class PlatformFileInfoController {
     String name = ctx.uploadedFile("file").getFilename();
     byte[] bytes = IOUtils.toByteArray(bodyAsInputStream);
 
-    // validate xml config
+    // validate xml config without resolving any external entity it declares
     if (name.toLowerCase().endsWith(".xml")) {
       try {
-        Configuration configuration = new Configuration();
-        configuration.addResource(new ByteArrayInputStream(bytes));
-        configuration.setDeprecatedProperties();
+        SecureXmlParser.validateWellFormed(bytes);
       } catch (Exception e) {
         ctx.json(new ErrorResponse("Uploaded file is not in valid XML format"));
         return;

@@ -31,6 +31,8 @@ import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
+
 /**
  * Extended implementation of {@link ClientPoolImpl} with {@link TableMetaStore} to support
  * authenticated hive cluster.
@@ -84,7 +86,9 @@ public class AuthenticatedHiveClientPool extends ClientPoolImpl<HMSClient, TExce
         new HiveConf(tableMetaStore.getConfiguration(), AuthenticatedHiveClientPool.class);
     this.hiveConf.addResource(tableMetaStore.getConfiguration());
     if (tableMetaStore.getHiveSiteLocation().isPresent()) {
-      this.hiveConf.addResource(tableMetaStore.getHiveSiteLocation().get());
+      // the file at the location is written from these bytes; parse them with DTDs disabled
+      // instead of re-reading the URL with an unrestricted parser
+      this.hiveConf.addResource(new ByteArrayInputStream(tableMetaStore.getMetaStoreSite()), true);
     }
     this.metaStore = tableMetaStore;
   }
